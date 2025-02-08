@@ -1,0 +1,41 @@
+{
+  "name": "jnv",
+  "version": "0.1.0",
+  "description": "JSON Validator",
+  "keywords": [
+    "json",
+    "api"
+  ],
+  "author": "Alexander Lonberg <alexlonberg@gmail.com>",
+  "homepage": "https://github.com/AlexLonberg/jnv",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AlexLonberg/jnv.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run --coverage --config vitest.config.ts",
+    "predist": "node ./scripts/dist.js",
+    "dist": "tsc --project tsconfig.dist.json"
+  },
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@eslint/js": "^9.20.0",
+    "@stylistic/eslint-plugin": "^3.1.0",
+    "@vitest/browser": "^3.0.5",
+    "@vitest/coverage-istanbul": "^3.0.5",
+    "eslint": "^9.20.0",
+    "nodejs-pkg-tools": "^0.5.0",
+    "playwright": "^1.50.1",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.23.0",
+    "vitest": "^3.0.5"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    }
+  },
+  "main": "./src/index.ts"
+}

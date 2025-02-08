@@ -1,0 +1,32 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch TS vite-node File",
+      "request": "launch",
+      "type": "node",
+      "console": "integratedTerminal",
+      // "console": "internalConsole",
+      "runtimeExecutable": "vite-node",
+      "skipFiles": [
+        "<node_internals>/**",
+        "node_modules/**"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/**/*.js",
+        "${workspaceFolder}/**/*.ts"
+      ],
+      // "smartStep": true,
+      // "autoAttachChildProcesses": false,
+      // Для передачи файла можно использовать как program, так и args,
+      // разница будет в пути: program - '.\src\some.ts', или абсолютный с args - 'C:\...\some.ts'
+      "program": "${file}",
+      // "args": [
+      //   "${file}"
+      // ],
+    }
+  ]
+}

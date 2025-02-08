@@ -1,0 +1,6 @@
+.private/
+.temp/
+node_modules/
+_*
+dist/
+local/
