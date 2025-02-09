@@ -20,9 +20,9 @@
 
 ```ts
 const numModel = v.num() // NumModel.key === null
-const objModel({
+const objModel = v.obj({
   foo: numModel, // key === 'foo'
-  bar: numModel  // key === 'foo'
+  bar: numModel,  // key === 'bar'
   box: numModel.stopError()  // key === 'box' and Settings.copy({stopIfError: true})
 })
 ```
@@ -50,6 +50,20 @@ return { ok: true, value }
 ```
 
 Модели всегда возвращают `{ok: true, ...}` или вызывают функции контекста. Роль `Context`: определить текущие параметры ветки и вернуть ожидаемый результат при ошибке(например `null` при `stopError()`) или поднять исключение. Если контекст возвращает `{ok: false}`, модель прерывает валидацию и поднимает ошибку выше по дереву. `Context` регистрирует ошибки и предупреждения, которые можно получить по окончании валидации типа.
+
+Внутреннее устройство валидации свойства объекта выглядит так:
+
+```ts
+if (hasOwn(value, key)) {
+  const { ok, value: v } = privateValidate(model, ctx, value[key])
+  if (!ok) {
+    // Нет смысла продолжать обход свойств,
+    // объект уже не пройдет проверку и мы поднимаем ошибку
+    return ctx.throwFaultyValueError(value[key], '...')
+  }
+  target[key] = v
+}
+```
 
 ### Расширение типов и ограничения
 
@@ -85,11 +99,11 @@ class RootFactory extends _RootFactory {
   strNumber (): StrNumberModel {
     // Стандартный конструктор должен получить:
     // + ссылку на общую конфигурацию
-    // + метаданные типа, это для реализованного типа StrNumberModel,
-    //   но в примере мы его не используем
-    // + настройки по умолчанию
+    // + настройки по умолчанию, пока они не меняются копия не нужна    
+    // + метаданные типа для реализованного типа StrNumberModel,
+    //   но в примере мы его не используем и берем подходящий подтип
     // + ключ(имя свойства) будет привязан автоматически и здесь он остается null
-    return new StrNumberModel(this._config, Metadata.str(), this._defaultSettings, null)
+    return new StrNumberModel(this._config, this._defaultSettings, Metadata.str(), null)
   }
 }
 ```
@@ -119,12 +133,12 @@ class MyMetadata<T> extends Metadata<T> {
 ```ts
 class RootFactory extends _RootFactory {
   strNumber (args: any): StrNumberModel {
-    return new StrNumberModel(this._config, new MyMetadata(args), this._defaultSettings, null)
+    return new StrNumberModel(this._config, this._defaultSettings, new MyMetadata(args), null)
   }
 }
 ```
 
-## Использование проекта с *.ts фалами без предварительной компиляции
+## Использование проекта с *.ts файлами без предварительной компиляции
 
 Сырой проект может использоваться как локальная зависимость для `Vite/Vue` или бандлеров разрешающих пути `.ts` файлов из `package.json` и позволяющих использовать TS-типы.
 

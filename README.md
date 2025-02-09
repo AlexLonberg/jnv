@@ -53,7 +53,7 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 
 ## API(Кратко)
 
-**Базовые типы**
+**Базовые типы - методы Factory**
 
 * **of()** - Автоматический парсер.
 * **raw()** - Необработанный `JsonLike`, объект не проверяется и возвращается как есть.
@@ -67,14 +67,14 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 * **tuple()** - Эмуляция `Tuple`.
 * **custom()** - Пользовательская функция.
 
-**Модификаторы**
+**Модификаторы - методы Model**
 
 * **min()/max()/range()** - Для чисел, строк и массивов.
 * **nonempty()** - Непустая строка.
 * **def()** - Значение по умолчанию.
 * **optional()** - Аналог необязательного свойства TS `{ prop?: type }`
 
-**Дополнительно**
+**Дополнительно - методы Model**
 
 * **pipe()** - Цепочка `Model<JsonLike>`.
 * **stopError()** - Не поднимать ошибку и заменить на значение по умолчанию для недопустимого типа.
@@ -87,7 +87,7 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 ```ts
 {
   ok: boolean,
-  value: T,
+  value: null | T,
   details?: {
     errors?: TErrorDetail[],
     warnings?: TErrorDetail[]
@@ -95,7 +95,7 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 }
 ```
 
-> Копирование выходного объекта зависит от параметра конфигурации `{createMode:'all'|'obj'|'arr'|'none'}`.
+> Копирование или перезапись выходного объекта зависит от параметра конфигурации `{createMode:'all'|'obj'|'arr'|'none'}`.
 
 ## Больше примеров
 
@@ -113,19 +113,23 @@ v.arr([{...}])
 Единственные типы которые невозможно вывести, это литералы. Литералы допускают только Json-примитивы:
 
 ```ts
-const myLiteral = v.literal('ABBR')
-const myLiteral = v.enum(false, true, 0, 1, 'off', 'on')
+const abbr = v.literal('ABBR')
+const enabled = v.enum(false, true, 0, 1, 'off', 'on')
 ```
 
 Как заменить недопустимый тип массива:
 
 ```ts
-const v = new Factory()
+// Параметры конфигурации доступны через JSDoc.
+const v = new Factory({
+  throwIfConfigureError: true,
+  createMode: 'obj'
+})
 
 const arrModel = v.arr([
   v.obj({ enabled: v.enum('on', 'off') })
-    .def({ AhHaHa: '😋' })
-    .stopError()
+    .def({ AhHaHa: '😋' }) // значение по умолчанию
+    .stopError()           // не поднимать ошибку
 ]).freeze()
 
 expect(arrModel.validate([
@@ -173,7 +177,7 @@ class MyRootFactory extends RootFactory {
     const meta = Metadata.re(re, /* ...rest: Re[] */)
     // Последний параметр null, это ключ Model.key и здесь он не нужен.
     // Это свойство будет автоматически привязано к свойству объекта.
-    return new PhoneNumberModel(this._config, meta, this._defaultSettings, null)
+    return new PhoneNumberModel(this._config, this._defaultSettings, meta, null)
   }
 }
 

@@ -88,12 +88,16 @@ test('Быстрый старт', () => {
 })
 
 test('Замена недопустимого типа', () => {
-  const v = new Factory()
+  // Параметры конфигурации доступны через JSDoc.
+  const v = new Factory({
+    throwIfConfigureError: true,
+    createMode: 'obj'
+  })
 
   const arrModel = v.arr([
     v.obj({ enabled: v.enum('on', 'off') })
-      .def({ AhHaHa: '😋' })
-      .stopError()
+      .def({ AhHaHa: '😋' }) // значение по умолчанию
+      .stopError()           // не поднимать ошибку
   ]).freeze()
 
   expect(arrModel.validate([
@@ -216,7 +220,7 @@ test('Расширение классов', () => {
       const meta = Metadata.re(re, /* ...rest: Re[] */)
       // Последний параметр null, это ключ Model.key и здесь он не нужен.
       // Это свойство будет автоматически привязано к свойству объекта.
-      return new PhoneNumberModel(this._config, meta, this._defaultSettings, null)
+      return new PhoneNumberModel(this._config, this._defaultSettings, meta, null)
     }
   }
 
@@ -264,7 +268,7 @@ test('Ошибки конфигурирования типов getConfigureError
   // Тип None не доступен через публичную фабрику, но внутренне используется для значений не прошедших проверку при конфигурировании.
   // Если отключены ошибки конфигурирования, любое свойство этого типа получит ошибку {ok: false, value: null}.
   // Поднятие этой ошибки будет зависеть от опций валиции.
-  const none = new NoneModel(new DefaultConfig(), Metadata.none(), new DefaultSettings(), null)
+  const none = new NoneModel(new DefaultConfig(), new DefaultSettings(), Metadata.none(), null)
   expect(none.validate(null)).toStrictEqual({ ok: false, value: null, details: expect.any(Object) })
 
   // Эмулировать такой тип можно установив неподдерживаемое для json значение
@@ -375,9 +379,9 @@ test('Все типы', () => {
   expect(v.num().min(5, true).validate(5)).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
   expect(v.num().max(5, true).validate(5)).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
 
-  // альтернатива range(0, true) float > 0
-  expect(v.nonnegative().validate(0.00001)).toStrictEqual({ ok: true, value: 0.00001 })
-  expect(v.nonnegative().validate(0)).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
+  // альтернатива min(0) float >= 0
+  expect(v.nonnegative().validate(0)).toStrictEqual({ ok: true, value: 0 })
+  expect(v.nonnegative().validate(-0.0001)).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
 
   // альтернатива v.num().int()
   expect(v.int().validate(5)).toStrictEqual({ ok: true, value: 5 })

@@ -56,8 +56,6 @@ class Metadata<T> {
 
   /**
    * Добавить ошибку вызванную на этапе конфигурации.
-   *
-   * @param code Код ошибки.
    */
   addConfigError (...details: TErrorDetail[]): void {
     if (!this._errorDetails) {
@@ -80,11 +78,17 @@ class Metadata<T> {
   }
 
   /**
-   * Возвращает поверхностную копию {@link expectedType}, если он является массивом {@link Model} для соответствующих структур и типов.
+   * Возвращает список моделей, которые могут быть в `Metadata`.
+   * Эта функция применяется для обхода вложенных моделей и сбора ошибок конфигурирования.
+   *
+   * NOTE: Этот метод должен быть реализован при расширении класса совместно с проверкой метода `copy()`.
    */
-  getTypeIfArray (): null | Model<any>[] {
+  getAllModels (): null | Model<any>[] {
     if (this._type === 'obj' || this._type === 'tuple' || this._type === 'union' || this._type === 'pipe') {
       return [...(this.expectedType as any[])] as Model<any>[]
+    }
+    if (this.expectedType !== emptyValue && this._type === 'arr') {
+      return [this.expectedType as UnionModel<any>]
     }
     return null
   }
@@ -95,6 +99,8 @@ class Metadata<T> {
    * Свойство `expectedType` переносится поверхностно, так как оно имеет либо примитив,
    * либо `Re|Model`, который не подлежит копированию пока не вызвана модификация.
    * Модификация `Model` создает новый инстанс и никак не влияет на существующие классы.
+   *
+   * NOTE: Этот метод должен быть реализован при расширении класса совместно с проверкой метода `getAllModels()`.
    */
   copy (): Metadata<T> {
     const meta = new Metadata<any>(this._type)

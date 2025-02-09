@@ -104,14 +104,14 @@ function mergeEnum (...values: TModelLiteral[]): { set: Set<JsonPrimitive>, faul
  */
 abstract class Model<T extends JsonLike> {
   protected readonly _config: Config
-  protected readonly _meta: Metadata<any>
   protected readonly _settings: Settings<T>
+  protected readonly _meta: Metadata<any>
   protected readonly _key: TPropertyName
 
-  constructor(config: Config, meta: Metadata<any>, settings: Settings<T>, key: TPropertyName) {
+  constructor(config: Config, settings: Settings<T>, meta: Metadata<any>, key: TPropertyName) {
     this._config = config
-    this._meta = meta
     this._settings = settings
+    this._meta = meta
     this._key = key
   }
 
@@ -125,7 +125,7 @@ abstract class Model<T extends JsonLike> {
         err.push(item)
       }
     }
-    const children = this._meta.getTypeIfArray()
+    const children = this._meta.getAllModels()
     if (children) {
       for (const item of children) {
         item._collectConfigureError(extendsPath, err)
@@ -200,7 +200,7 @@ abstract class Model<T extends JsonLike> {
   freeze<Target extends JsonLike = T> (): Model<Target> {
     const settings = this._settings.copy()
     settings._freeze()
-    return this._copyWith(null, null, settings) as unknown as Model<Target>
+    return this._copyWith(null, settings, null) as unknown as Model<Target>
   }
 
   /**
@@ -258,16 +258,16 @@ abstract class Model<T extends JsonLike> {
    * Возвращает копию типа. Этот метод сбрасывает флаг установленный методом {@link freeze()} для новой копии текущего типа.
    */
   copy (): this {
-    return this._copyWith(this._config.copy(), this._meta.copy(), this._settings.copy())
+    return this._copyWith(this._config.copy(), this._settings.copy(), this._meta.copy())
   }
 
   /**
    * Копирование только с явно установленными типами параметров.
-   * Для изменения параметров meta, вызываем _copyWith(null, meta.copy(...), null), и т.п.
+   * Для изменения параметров meta, вызываем _copyWith(null, null, meta.copy(...)), и т.п.
    */
-  protected _copyWith (config: null | Config, meta: null | Metadata<T>, settings: null | Settings<T>): this {
+  protected _copyWith (config: null | Config, settings: null | Settings<T>, meta: null | Metadata<T>): this {
     return new (this.constructor as (new (...args: any[]) => this))(
-      config ?? this._config, meta ?? this._meta, settings ?? this._settings, this._key
+      config ?? this._config, settings ?? this._settings, meta ?? this._meta, this._key
     )
   }
 
@@ -276,7 +276,7 @@ abstract class Model<T extends JsonLike> {
    * Он полностью сохраняет ссылки на неизмененные настройки и оборачивает модель с новым именем.
    */
   [SHALLOW_COPY] (name: TPropertyName): this {
-    return new (this.constructor as (new (...args: any[]) => this))(this._config, this._meta, this._settings, name)
+    return new (this.constructor as (new (...args: any[]) => this))(this._config, this._settings, this._meta, name)
   }
 
   /**
@@ -288,7 +288,7 @@ abstract class Model<T extends JsonLike> {
       validators.push(privateShallowCopyWithName(item, null))
     }
     const meta = Metadata.pipe(validators)
-    return new PipeModel<Target>(this._config, meta, this._settings as Settings<any>, this._key)
+    return new PipeModel<Target>(this._config, this._settings as Settings<any>, meta, this._key)
   }
 }
 
@@ -303,7 +303,7 @@ abstract class BaseModel<T extends JsonLike> extends Model<T> {
     if (this._settings.stopIfError || this._throwIfFrozen()) {
       return this
     }
-    return this._copyWith(null, null, this._settings.copy({ stopIfError: true }))
+    return this._copyWith(null, this._settings.copy({ stopIfError: true }), null)
   }
 
   /**
@@ -315,7 +315,7 @@ abstract class BaseModel<T extends JsonLike> extends Model<T> {
     if (this._settings.isEqualDefaultValue(defaultValue) || this._throwIfFrozen()) {
       return this
     }
-    return this._copyWith(null, null, this._settings.copy(null, { value: defaultValue }))
+    return this._copyWith(null, this._settings.copy(null, { value: defaultValue }), null)
   }
 
   /**
@@ -328,7 +328,7 @@ abstract class BaseModel<T extends JsonLike> extends Model<T> {
       return this
     }
     const settings = this._settings.copy({ optional: true }, isUndefined(defaultValue) ? null : { value: defaultValue })
-    return this._copyWith(null, null, settings as Settings<T>)
+    return this._copyWith(null, settings as Settings<T>, null)
   }
 }
 
@@ -354,7 +354,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
     if (this._meta.type === 'num') {
       copy.expectedType = true
     }
-    return this._copyWith(null, copy, null)
+    return this._copyWith(null, null, copy)
   }
 
   /**
@@ -376,7 +376,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
     const copy = this._meta.copy()
     copy.min = min
     copy.exclusive = excl
-    return this._copyWith(null, copy, null)
+    return this._copyWith(null, null, copy)
   }
 
   /**
@@ -398,7 +398,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
     const copy = this._meta.copy()
     copy.max = max
     copy.exclusive = excl
-    return this._copyWith(null, copy, null)
+    return this._copyWith(null, null, copy)
   }
 
   /**
@@ -418,7 +418,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
     copy.min = min
     copy.max = max
     copy.exclusive = excl
-    return this._copyWith(null, copy, null)
+    return this._copyWith(null, null, copy)
   }
 
   /**
@@ -556,7 +556,7 @@ class NumModel extends BaseRangeModel<number> {
     }
     const copy = this._meta.copy()
     copy.expectedType = true
-    return this._copyWith(null, copy, null)
+    return this._copyWith(null, null, copy)
   }
 
   /**
@@ -677,7 +677,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     if (this._settings.removeFaulty || this._throwIfFrozen()) {
       return this
     }
-    return this._copyWith(null, null, this._settings.copy({ removeFaulty: true }))
+    return this._copyWith(null, this._settings.copy({ removeFaulty: true }), null)
   }
 
   protected _validateStrictItemsModeRewrite (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
@@ -812,7 +812,6 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
 }
 
 class TupleModel<T extends JsonArray> extends BaseModel<T> {
-
   protected _validateItemsModeRewrite (ctx: Context, value: any[], expectedType: Model<any>[]): TRes<T> {
     for (let i = 0; i < expectedType.length; ++i) {
       const item = value[i]
@@ -910,22 +909,22 @@ class RootFactory {
       throw new ConfigureError(detail.message, propertyNameToString(name))
     }
     if (!model) {
-      model = new NoneModel(this._config, Metadata.none(), this._defaultSettings, name)
+      model = new NoneModel(this._config, this._defaultSettings, Metadata.none(), name)
     }
     privatePropertyMetadata<any>(model).addConfigError(detail)
     return model
   }
 
   protected _bool (name: TPropertyName): BoolModel {
-    return new BoolModel(this._config, Metadata.bool(), this._defaultSettings, name)
+    return new BoolModel(this._config, this._defaultSettings, Metadata.bool(), name)
   }
 
   protected _num (name: TPropertyName): NumModel {
-    return new NumModel(this._config, Metadata.num(), this._defaultSettings, name)
+    return new NumModel(this._config, this._defaultSettings, Metadata.num(), name)
   }
 
   protected _str (name: TPropertyName): StrModel {
-    return new StrModel(this._config, Metadata.str(), this._defaultSettings, name)
+    return new StrModel(this._config, this._defaultSettings, Metadata.str(), name)
   }
 
   protected _re (name: TPropertyName, ...values: (RegExp/* | StrModel*/)[]): StrModel {
@@ -952,7 +951,7 @@ class RootFactory {
         meta.addConfigError(...errors)
       }
     }
-    return new StrModel(this._config, meta, this._defaultSettings, name)
+    return new StrModel(this._config, this._defaultSettings, meta, name)
   }
 
   protected _object (name: TPropertyName, value: any): ObjModel<JsonObject> {
@@ -963,7 +962,7 @@ class RootFactory {
     for (const [key, item] of Object.entries(value)) {
       meta.expectedType.push(this._modelOf(key, item))
     }
-    return new ObjModel<JsonObject>(this._config, meta, this._defaultSettings, name)
+    return new ObjModel<JsonObject>(this._config, this._defaultSettings, meta, name)
   }
 
   protected _array (name: TPropertyName, values: any[]): ArrModel<JsonArray> {
@@ -980,16 +979,16 @@ class RootFactory {
         // Индекс это имя свойства и здесь оно не имеет никакого значения.
         models.push(this._modelOf(i, values[i]))
       }
-      union = new UnionModel(this._config, Metadata.union(models), this._defaultSettings, 0)
+      union = new UnionModel(this._config, this._defaultSettings, Metadata.union(models), 0)
     }
-    return new ArrModel(this._config, Metadata.arr(union), this._defaultSettings, name)
+    return new ArrModel(this._config, this._defaultSettings, Metadata.arr(union), name)
   }
 
   protected _custom<T extends JsonLike> (name: TPropertyName, fun: TCustomValidate<T>): CustomModel<T> {
     if (!isFunction(fun)) {
       return this._addOrThrowConfigureError(name, `Аргументом custom(fun: ${valueToString(fun)}}) должна быть функция.`, null) as unknown as CustomModel<T>
     }
-    return new CustomModel(this._config, Metadata.custom(fun), this._defaultSettings, name)
+    return new CustomModel(this._config, this._defaultSettings, Metadata.custom(fun), name)
   }
 
   protected _modelOf (name: TPropertyName, value: any | Model<any>): Model<JsonLike> {
@@ -1000,7 +999,7 @@ class RootFactory {
       return this._re(name, value)
     }
     if (value === null) {
-      return new LiteralModel<null>(this._config, Metadata.literal(null), this._defaultSettings, name)
+      return new LiteralModel<null>(this._config, this._defaultSettings, Metadata.literal(null), name)
     }
     if (isBoolean(value)) {
       return this._bool(name)
@@ -1037,14 +1036,14 @@ class RootFactory {
    * Значение не проверяется и не трансформируется. Свойство будет оставлено как есть.
    */
   raw (): RawModel {
-    return new RawModel(this._config, Metadata.raw(), this._defaultSettings, null)
+    return new RawModel(this._config, this._defaultSettings, Metadata.raw(), null)
   }
 
   /**
    * Псевдоним {@link literal()} со значением `null`.
    */
   null (): LiteralModel<null> {
-    return new LiteralModel<null>(this._config, Metadata.literal(null), this._defaultSettings, null)
+    return new LiteralModel<null>(this._config, this._defaultSettings, Metadata.literal(null), null)
   }
 
   /**
@@ -1057,14 +1056,14 @@ class RootFactory {
     const settings = (isUndefined(defaultValue)
       ? this._defaultSettings
       : this._defaultSettings.copy({ optional: true }, { value: defaultValue })) as Settings<boolean>
-    return new BoolModel(this._config, meta, settings, null)
+    return new BoolModel(this._config, settings, meta, null)
   }
 
   protected _numWith (meta: Metadata<boolean>, defaultValue?: undefined | null | number): NumModel {
     const settings = (isUndefined(defaultValue)
       ? this._defaultSettings
       : this._defaultSettings.copy({ optional: true }, { value: defaultValue })) as Settings<number>
-    return new NumModel(this._config, meta, settings, null)
+    return new NumModel(this._config, settings, meta, null)
   }
 
   /**
@@ -1078,14 +1077,14 @@ class RootFactory {
   }
 
   /**
-   * Неотрицательное `number`. Сокращение для {@link Factory.range}(0, true).
+   * Неотрицательное `number`. Сокращение для {@link Factory.num}().min(0).
    *
    * @param defaultValue Если `!undefined`, тип будет автоматически приведен к {@link NumModel.optional()} со значением по умолчанию.
    */
   nonnegative (defaultValue?: undefined | null | number): NumModel {
     const meta = Metadata.num()
     meta.min = 0
-    meta.exclusive = true
+    meta.exclusive = false
     return this._numWith(meta, defaultValue)
   }
 
@@ -1143,7 +1142,7 @@ class RootFactory {
     const settings = (isUndefined(defaultValue)
       ? this._defaultSettings
       : this._defaultSettings.copy({ optional: true }, { value: defaultValue })) as Settings<string>
-    return new StrModel(this._config, meta, settings, null)
+    return new StrModel(this._config, settings, meta, null)
   }
 
   /**
@@ -1172,7 +1171,7 @@ class RootFactory {
    */
   literal<T extends JsonPrimitive> (value: T): LiteralModel<T> {
     if (isJsonPrimitive(value)) {
-      return new LiteralModel(this._config, Metadata.literal(value), this._defaultSettings, null)
+      return new LiteralModel(this._config, this._defaultSettings, Metadata.literal(value), null)
     }
     return this._addOrThrowConfigureError(null, `Ошибочные аргументы literal(value: ${valueToString(value)})`, null) as unknown as LiteralModel<T>
   }
@@ -1209,7 +1208,7 @@ class RootFactory {
         meta.addConfigError(...errors)
       }
     }
-    return new EnumModel(this._config, meta, this._defaultSettings, null)
+    return new EnumModel(this._config, this._defaultSettings, meta, null)
   }
 
   /**
@@ -1243,7 +1242,7 @@ class RootFactory {
     for (let i = 0; i < values.length; ++i) {
       tuple.push(this._modelOf(i, values[i]))
     }
-    return new TupleModel(this._config, Metadata.tuple(tuple), this._defaultSettings, null)
+    return new TupleModel(this._config, this._defaultSettings, Metadata.tuple(tuple), null)
   }
 
   /**
@@ -1260,7 +1259,7 @@ class RootFactory {
     for (let i = 0; i < items.length; ++i) {
       union.push(this._modelOf(i, items[i]))
     }
-    return new UnionModel(this._config, Metadata.union(union), this._defaultSettings, null)
+    return new UnionModel(this._config, this._defaultSettings, Metadata.union(union), null)
   }
 
   /**
