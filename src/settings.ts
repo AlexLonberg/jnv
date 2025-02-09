@@ -1,6 +1,6 @@
 import { type TEmptyValue, type TValidateSettings, emptyValue } from './types.js'
 import { isPlainObject, plainCopy } from './utils.js'
-import { mergeBoolOptions, BoolOptions } from './options.js'
+import { mergeBoolOrNumOptions, BoolOrNumOptions } from './options.js'
 
 type TSettings = TValidateSettings & { optional: boolean }
 type TSettingsPartial = { [K in keyof TSettings]?: undefined | null | TSettings[K] }
@@ -11,7 +11,7 @@ const defaultSettings: TSettings = Object.freeze({
   optional: false
 } as const)
 
-class Settings<T> extends BoolOptions<TSettings> {
+class Settings<T> extends BoolOrNumOptions<TSettings> {
   // NOTE Этот параметр должен устанавливаться только в одной централизованной функции. При копировании объекта он сбрасывается.
   protected _readonlyFrozen: boolean = false
   protected _defaultValue: TEmptyValue | null | T
@@ -82,7 +82,7 @@ class DefaultSettings<T> extends Settings<T> {
     defaultValue?: undefined | null | { value: T }
   ) {
     super(
-      isPlainObject(options) ? mergeBoolOptions(plainCopy(defaultSettings), options) : plainCopy(defaultSettings),
+      isPlainObject(options) ? mergeBoolOrNumOptions(plainCopy(defaultSettings), options) : plainCopy(defaultSettings),
       defaultValue ?? null
     )
   }

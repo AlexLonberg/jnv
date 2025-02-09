@@ -247,7 +247,7 @@ class Context {
       // @ts-expect-error
       result.details = details
     }
-    // TODO Систему регистрации ошибок следует хороша перепроверить на всех сценариях.
+    // TODO Систему регистрации ошибок следует хорошо перепроверить на всех сценариях.
     //      Важно, чтобы при ok:true, здесь не было ни одно details.errors
     if ((result.ok && (result as any).details?.errors) || (!result.ok && !(result as any).details?.errors)) {
       this._unclearResult(result as any)

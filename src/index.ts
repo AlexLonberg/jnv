@@ -1,4 +1,5 @@
 export {
+  transformStringOptions,
   Config,
   DefaultConfig
 } from './config.js'
@@ -62,8 +63,8 @@ export {
   Factory
 } from './models.js'
 export {
-  mergeBoolOptions,
-  BoolOptions
+  mergeBoolOrNumOptions,
+  BoolOrNumOptions
 } from './options.js'
 export {
   Re,

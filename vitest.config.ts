@@ -1,17 +1,7 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vitest/config'
-import type { BrowserProviderOptions } from 'vitest/node'
 // Здесь можно найти описание некоторых типов настроек playwright
 // import { } from '@vitest/browser/providers/playwright'
-
-const providerOptions: BrowserProviderOptions = {
-  launch: {
-    // devtools: true,
-    args: [
-      '--remote-debugging-port=9222'
-    ]
-  }
-}
 
 // Конфигурация для тестирования в Chromium
 export default defineConfig({
@@ -21,11 +11,10 @@ export default defineConfig({
     ],
     browser: {
       enabled: true,
-      name: 'chromium',
       provider: 'playwright',
       // viewport: { height: 100, width: 100 },
-      // headless: true,
-      providerOptions
+      // headless: true
+      instances: [{ browser: 'chromium' }]
     },
     coverage: {
       enabled: true,
@@ -36,7 +25,7 @@ export default defineConfig({
     // Config https://vitest.dev/config/#benchmark
     benchmark: {
       include: [
-        'examples/**/*.bench.ts',
+        'src/**/*.bench.ts',
       ]
     }
   }

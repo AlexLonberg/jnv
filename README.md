@@ -56,7 +56,7 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 **Базовые типы**
 
 * **of()** - Автоматический парсер.
-* **raw()** - Необработанный `JsonLike`.
+* **raw()** - Необработанный `JsonLike`, объект не проверяется и возвращается как есть.
 * **bool()** - `boolean`.
 * **num()/nonnegative()/int()/positive()/range()** - `number`.
 * **str()/re()** - `string`
@@ -95,7 +95,7 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 }
 ```
 
-> Выходной объект пересоздается, но массивы используются как есть. Если вам нужна копия, следует предварительно клонировать объект.
+> Копирование выходного объекта зависит от параметра конфигурации `{createMode:'all'|'obj'|'arr'|'none'}`.
 
 ## Больше примеров
 
@@ -143,9 +143,13 @@ expect(arrModel.validate([
 
 ## Расширение классов
 
+Более подробное описание расширения пользовательских типов можно увидеть [на этой странице dev.md](./dev.md)
+
 Класс валидатора обязан реализовать единственный абстрактный метод `_validate()`
 
 ```ts
+import { BaseModel, RootFactory, Factory } from 'jnv'
+
 class PhoneNumberModel extends BaseModel<string> {
   protected override _validate (ctx: Context, value: any): TRes<string> {
     if (!isString(value)) {
@@ -163,13 +167,27 @@ class PhoneNumberModel extends BaseModel<string> {
 }
 
 // Добавим к фабрике новый тип, используя кеш regExp
-class MyFactory extends Factory {
+class MyRootFactory extends RootFactory {
   phoneNumber (): PhoneNumberModel {
     const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
     const meta = Metadata.re(re, /* ...rest: Re[] */)
     // Последний параметр null, это ключ Model.key и здесь он не нужен.
     // Это свойство будет автоматически привязано к свойству объекта.
     return new PhoneNumberModel(this._config, meta, this._defaultSettings, null)
+  }
+}
+
+// Полностью копируем основную фабрику с обновленной MyRootFactory
+class MyFactory extends MyRootFactory {
+  constructor(options?: undefined | null | TOptions) {
+    super(options)
+  }
+  protected _getScopeNameOf (name: string): string {
+    return name // Для примера не будет копировать тело медода и возвратим строку как есть
+  }
+  scope (name: string, options?: undefined | null | TValidateOptions): MyRootFactory {
+    const config = this._config.extends(options ?? null, this._getScopeNameOf(isString(name) ? name : ''))
+    return new MyRootFactory(config, this._regExpCache)
   }
 }
 

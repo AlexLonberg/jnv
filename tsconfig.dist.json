@@ -111,7 +111,8 @@
   ],
   "exclude": [
     "src/**/_*",
-    "src/**/*test.ts"
+    "src/**/*test.ts",
+    "src/**/*bench.ts"
   ],
   "references": null
 }

@@ -42,7 +42,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.js",
     "scripts/**/*.ts",
     "scripts/**/*.js"
   ],

@@ -5,6 +5,8 @@ import {
   type TRes,
   type TResult,
   type TErrorDetail,
+  type TValidateOptions,
+  type TOptions,
   type Context,
   type Re,
   defaultRootName,
@@ -24,6 +26,7 @@ import {
   NoneModel,
   BaseModel,
   ObjModel,
+  RootFactory,
   Factory
 } from './index.js'
 
@@ -102,46 +105,6 @@ test('Замена недопустимого типа', () => {
     { AhHaHa: '😋' },
     { enabled: 'off' }
   ])
-})
-
-test('Расширение классов', () => {
-  // Класс валидатора обязан реализовать единственный абстрактный метод `_validate()`
-  class PhoneNumberModel extends BaseModel<string> {
-    protected override _validate (ctx: Context, value: any): TRes<string> {
-      if (!isString(value)) {
-        return ctx.throwFaultyValueError(value, 'Expected a string')
-      }
-      // Получим ссылку на Metadata и проверим варианты RegExp
-      const expectedType = (this._meta as Metadata<Re[]>).expectedType
-      for (const re of expectedType) {
-        if (re.test(value)) {
-          return { ok: true, value }
-        }
-      }
-      return ctx.throwFaultyValueError(value, 'Invalid phone number format')
-    }
-  }
-
-  // Добавим к фабрике новый тип, используя кеш regExp
-  class MyFactory extends Factory {
-    phoneNumber (): PhoneNumberModel {
-      const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
-      const meta = Metadata.re(re, /* ...rest: Re[] */)
-      // Последний параметр null, это ключ Model.key и здесь он не нужен.
-      // Это свойство будет автоматически привязано к свойству объекта.
-      return new PhoneNumberModel(this._config, meta, this._defaultSettings, null)
-    }
-  }
-
-  // Используем наш валидатор
-  const v = new MyFactory()
-
-  const phoneModel = v.phoneNumber()
-  expect(phoneModel.validate('123-456-7890').value)
-    .toBe('123-456-7890')
-  // @ts-expect-error
-  expect(phoneModel.validate('123-456-789').details.errors[0].message)
-    .toContain('Invalid phone number format')
 })
 
 test('Расширяемые области scope(Scope name, options)', () => {
@@ -226,6 +189,73 @@ test('Заморозка freeze()', () => {
   expect(model.validate({ foo: 2, bar: 3 })).toStrictEqual({ ok: true, value: { foo: 2, bar: 3 } })
   expect(modelFrozen.validate({ foo: 4, bar: 5 })).toStrictEqual({ ok: true, value: { foo: 4, bar: 5 } })
   expect(unfreeze.validate({ foo: 6, bar: 7 })).toStrictEqual({ ok: true, value: { foo: 6, bar: 7 } })
+})
+
+test('Расширение классов', () => {
+  // Класс валидатора обязан реализовать единственный абстрактный метод `_validate()`
+  class PhoneNumberModel extends BaseModel<string> {
+    protected override _validate (ctx: Context, value: any): TRes<string> {
+      if (!isString(value)) {
+        return ctx.throwFaultyValueError(value, 'Expected a string')
+      }
+      // Получим ссылку на Metadata и проверим варианты RegExp
+      const expectedType = (this._meta as Metadata<Re[]>).expectedType
+      for (const re of expectedType) {
+        if (re.test(value)) {
+          return { ok: true, value }
+        }
+      }
+      return ctx.throwFaultyValueError(value, 'Invalid phone number format')
+    }
+  }
+
+  // Добавим к фабрике новый тип, используя кеш regExp
+  class MyRootFactory extends RootFactory {
+    phoneNumber (): PhoneNumberModel {
+      const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
+      const meta = Metadata.re(re, /* ...rest: Re[] */)
+      // Последний параметр null, это ключ Model.key и здесь он не нужен.
+      // Это свойство будет автоматически привязано к свойству объекта.
+      return new PhoneNumberModel(this._config, meta, this._defaultSettings, null)
+    }
+  }
+
+  // Полностью копируем основную фабрику с обновленной MyRootFactory
+  class MyFactory extends MyRootFactory {
+    protected readonly _registeredScopeNames = new Set<string>()
+
+    constructor(options?: undefined | null | TOptions) {
+      super(options)
+    }
+
+    protected _getScopeNameOf (name: string): string {
+      if (!isString(name)) {
+        name = ''
+      }
+      let freeName = name
+      let counter = 0
+      while (this._registeredScopeNames.has(freeName)) {
+        freeName = `${name}(${++counter})`
+      }
+      this._registeredScopeNames.add(freeName)
+      return freeName
+    }
+
+    scope (name: string, options?: undefined | null | TValidateOptions): MyRootFactory {
+      const config = this._config.extends(options ?? null, this._getScopeNameOf(isString(name) ? name : ''))
+      return new MyRootFactory(config, this._regExpCache)
+    }
+  }
+
+  // Используем наш валидатор
+  const v = new MyFactory()
+
+  const phoneModel = v.phoneNumber()
+  expect(phoneModel.validate('123-456-7890').value)
+    .toBe('123-456-7890')
+  // @ts-expect-error
+  expect(phoneModel.validate('123-456-789').details.errors[0].message)
+    .toContain('Invalid phone number format')
 })
 
 test('Ошибки конфигурирования типов getConfigureError()', () => {

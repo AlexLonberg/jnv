@@ -632,7 +632,7 @@ class ObjModel<T extends JsonObject> extends BaseModel<T> {
       return ctx.throwFaultyValueError(value, 'Ожидался Plain Object.')
     }
 
-    const target = {} as any
+    const target = (this._config.modeCopyObj ? {} : value) as any
     const expectedType = (this._meta as Metadata<Model<any>[]>).expectedType
     for (const model of expectedType) {
       const key = model.key as string
@@ -680,8 +680,8 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     return this._copyWith(null, null, this._settings.copy({ removeFaulty: true }))
   }
 
-  protected _validateStrictItems (ctx: Context, values: any, expectedType: UnionModel<any>): TRes<T> {
-    for (let i = values.length - 1; i >= 0; --i) {
+  protected _validateStrictItemsModeRewrite (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
+    for (let i = 0; i < values.length; ++i) {
       const item = values[i]
       const release = ctx.pushKey(i)
       try {
@@ -696,10 +696,30 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
         release()
       }
     }
-    return { ok: true, value: values }
+    return { ok: true, value: values as T }
   }
 
-  protected _validateIgnoreItems (ctx: Context, values: any, expectedType: UnionModel<any>): TRes<T> {
+  protected _validateStrictItems (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
+    const newValues: any[] = []
+    for (let i = 0; i < values.length; ++i) {
+      const item = values[i]
+      const release = ctx.pushKey(i)
+      try {
+        const { ok, value } = privateValidate(expectedType, ctx, item)
+        if (ok) {
+          newValues.push(value)
+        }
+        else {
+          return ctx.throwFaultyValueError(item, 'Неудачная валидация элемента массива.')
+        }
+      } finally {
+        release()
+      }
+    }
+    return { ok: true, value: newValues as T }
+  }
+
+  protected _validateIgnoreItemsModeRewrite (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
     const release = ctx.enterOnlyWarning()
     try {
       for (let i = values.length - 1; i >= 0; --i) {
@@ -723,12 +743,41 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     }
     const resultPost = this._checkMinMax(values.length)
     if (resultPost === 1) {
-      return ctx.throwFaultyValueError(values, `Количество элементов массива не соответствует ожидаемому, min:${this._meta.min}, value.length: ${values.length}, value: ${valueToString(values)}`)
+      return ctx.throwFaultyValueError(values, `Количество элементов массива не соответствует ожидаемому, min:${this._meta.min}, value.length: ${values.length}.`)
     }
     if (resultPost === 2) {
-      return ctx.throwFaultyValueError(values, `Количество элементов массива не соответствует ожидаемому, max:${this._meta.max}, value.length: ${values.length}, value: ${valueToString(values)}`)
+      return ctx.throwFaultyValueError(values, `Количество элементов массива не соответствует ожидаемому, max:${this._meta.max}, value.length: ${values.length}.`)
     }
-    return { ok: true, value: values }
+    return { ok: true, value: values as T }
+  }
+
+  protected _validateIgnoreItems (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
+    const newValues: any[] = []
+    const release = ctx.enterOnlyWarning()
+    try {
+      for (let i = 0; i < values.length; ++i) {
+        const item = values[i]
+        const release = ctx.pushKey(i)
+        try {
+          const { ok, value } = privateValidate(expectedType, ctx, item)
+          if (ok) {
+            newValues.push(value)
+          }
+        } finally {
+          release()
+        }
+      }
+    } finally {
+      release()
+    }
+    const resultPost = this._checkMinMax(newValues.length)
+    if (resultPost === 1) {
+      return ctx.throwFaultyValueError(newValues, `Количество элементов массива не соответствует ожидаемому, min:${this._meta.min}, value.length: ${newValues.length}.`)
+    }
+    if (resultPost === 2) {
+      return ctx.throwFaultyValueError(newValues, `Количество элементов массива не соответствует ожидаемому, max:${this._meta.max}, value.length: ${newValues.length}.`)
+    }
+    return { ok: true, value: newValues as T }
   }
 
   protected override _validate (ctx: Context, value: any): TRes<T> {
@@ -738,10 +787,10 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
 
     const result = this._checkMinMax(value.length)
     if (result === 1) {
-      return ctx.throwFaultyValueError(value, `Количество элементов массива не соответствует ожидаемому, min:${this._meta.min}, value.length: ${value.length}, value: ${valueToString(value)}`)
+      return ctx.throwFaultyValueError(value, `Количество элементов массива не соответствует ожидаемому, min:${this._meta.min}, value.length: ${value.length}.`)
     }
     if (result === 2) {
-      return ctx.throwFaultyValueError(value, `Количество элементов массива не соответствует ожидаемому, max:${this._meta.max}, value.length: ${value.length}, value: ${valueToString(value)}`)
+      return ctx.throwFaultyValueError(value, `Количество элементов массива не соответствует ожидаемому, max:${this._meta.max}, value.length: ${value.length}.`)
     }
 
     const expectedType = (this._meta as Metadata<UnionModel<any> | null>).expectedType
@@ -750,25 +799,21 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     }
 
     if (this._settings.removeFaulty) {
-      return this._validateIgnoreItems(ctx, value, expectedType)
+      return this._config.modeCopyArr
+        ? this._validateIgnoreItems(ctx, value, expectedType)
+        : this._validateIgnoreItemsModeRewrite(ctx, value, expectedType)
     }
     else {
-      return this._validateStrictItems(ctx, value, expectedType)
+      return this._config.modeCopyArr
+        ? this._validateStrictItems(ctx, value, expectedType)
+        : this._validateStrictItemsModeRewrite(ctx, value, expectedType)
     }
   }
 }
 
 class TupleModel<T extends JsonArray> extends BaseModel<T> {
-  protected override _validate (ctx: Context, value: any): TRes<T> {
-    if (!isArray(value)) {
-      return ctx.throwFaultyValueError(value, 'Ожидался Array(tuple).')
-    }
 
-    const expectedType = (this._meta as Metadata<Model<any>[]>).expectedType
-    if (expectedType.length !== value.length) {
-      return ctx.throwFaultyValueError(value, `Количество требуемых элементов tuple.length:${expectedType.length} не совпадает с полученным массивом value.length:${value.length}`)
-    }
-
+  protected _validateItemsModeRewrite (ctx: Context, value: any[], expectedType: Model<any>[]): TRes<T> {
     for (let i = 0; i < expectedType.length; ++i) {
       const item = value[i]
       const model = expectedType[i]!
@@ -785,7 +830,43 @@ class TupleModel<T extends JsonArray> extends BaseModel<T> {
         releaseKey()
       }
     }
-    return { ok: true, value }
+    return { ok: true, value: value as T }
+  }
+
+  protected _validateItems (ctx: Context, value: any[], expectedType: Model<any>[]): TRes<T> {
+    const newValues = []
+    for (let i = 0; i < expectedType.length; ++i) {
+      const item = value[i]
+      const model = expectedType[i]!
+      const releaseKey = ctx.pushKey(i)
+      try {
+        const { ok, value: v } = privateValidate(model, ctx, item)
+        if (ok) {
+          newValues.push(v)
+        }
+        else {
+          return ctx.throwFaultyValueError(item, 'Неудачная валидация элемента tuple.')
+        }
+      } finally {
+        releaseKey()
+      }
+    }
+    return { ok: true, value: newValues as T }
+  }
+
+  protected override _validate (ctx: Context, value: any): TRes<T> {
+    if (!isArray(value)) {
+      return ctx.throwFaultyValueError(value, 'Ожидался Array(tuple).')
+    }
+
+    const expectedType = (this._meta as Metadata<Model<any>[]>).expectedType
+    if (expectedType.length !== value.length) {
+      return ctx.throwFaultyValueError(value, `Количество требуемых элементов tuple.length:${expectedType.length} не совпадает с полученным массивом value.length:${value.length}`)
+    }
+
+    return this._config.modeCopyArr
+      ? this._validateItems(ctx, value, expectedType)
+      : this._validateItemsModeRewrite(ctx, value, expectedType)
   }
 }
 
