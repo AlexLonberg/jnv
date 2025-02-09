@@ -83,7 +83,7 @@ class Metadata<T> {
    * Возвращает поверхностную копию {@link expectedType}, если он является массивом {@link Model} для соответствующих структур и типов.
    */
   getTypeIfArray (): null | Model<any>[] {
-    if (this._type === 'obj' || this._type === 'arr' || this._type === 'tuple' || this._type === 'union') {
+    if (this._type === 'obj' || this._type === 'tuple' || this._type === 'union' || this._type === 'pipe') {
       return [...(this.expectedType as any[])] as Model<any>[]
     }
     return null
@@ -105,8 +105,8 @@ class Metadata<T> {
     meta.expectedType = (this.expectedType instanceof Set)
       ? new Set(this.expectedType.values())
       : isArray(this.expectedType)
-        ? [...this.expectedType] // Model[]
-        : this.expectedType      // TEmptyValue|null|boolean|number|string|function
+        ? [...this.expectedType] // Model[]|Re[]
+        : this.expectedType      // TEmptyValue|null|boolean|number|string|function|UnionModel
 
     return meta
   }
