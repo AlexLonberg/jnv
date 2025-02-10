@@ -39,18 +39,13 @@ test('Быстрый старт', () => {
     name: v.str().min(3),
     email: /^[0-9a-z]+@[0-9a-z]+\.[a-z]+$/i, // эквивалентно v.re(...)
     gender: v.enum('male', 'female').optional(),
-    // Область модели позволяет расширять конфигурацию.
-    // Имя может быть абсолютно любым и используется только в целях отладки.
-    // Данная конфигурация предполагает:
-    //  + stopIfError эквивалент model.stopError() - игнорировать ошибку и установить
-    //    значение по умолчанию, или `null` если его нет.
-    address: v.scope('AddressModel', { stopIfError: true }).obj({
+    // Оборачиваем объект в тип, для возможности применения .stopError() - игнорировать
+    // ошибку и установить значение по умолчанию или `null`(если его нет).
+    address: v.obj({
       city: v.str().nonempty(), // эквивалентно .str().min(1)
       street: 'any string', // эквивалентно .str()
       zipCode: ''
-    })
-    // то же что и опция конфигурации stopIfError, но применяется непосредственно к инстансу
-    //.stopError()
+    }).stopError()
   })
 
   const sampleUser = {
@@ -213,9 +208,20 @@ test('Расширение классов', () => {
     }
   }
 
-  // Добавим к фабрике новый тип, используя кеш regExp
-  class MyRootFactory extends RootFactory {
+  // Есть два варианта добавления фабричной функции:
+  //  1. Добавить фабричный метод к `RootFactory` и обновить конструктор удалив ненужный `RegExpCache`.
+  //  2. Добавить фабричный метод к `RootFactory` и обновить класс `Factory` - это позволяет расширять конфигурацию,
+  //     но чаще всего избыточно, так как методы настроек(`stopError()/removeFaulty()`) доступны на экземплярах.
+
+  // Вариант 1 - Предполагает что MySimpleFactory станет публичной фабрикой
+  class MySimpleFactory extends RootFactory {
+    // Копируем сигнатуру RootFactory без RegExpCache
+    constructor(options?: undefined | null | TOptions) {
+      super(options)
+    }
+
     phoneNumber (): PhoneNumberModel {
+      // Добавим к фабрике новый тип, используя кеш regExp
       const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
       const meta = Metadata.re(re, /* ...rest: Re[] */)
       // Последний параметр null, это ключ Model.key и здесь он не нужен.
@@ -224,7 +230,16 @@ test('Расширение классов', () => {
     }
   }
 
-  // Полностью копируем основную фабрику с обновленной MyRootFactory
+  // Вариант 2.1 - Не трогаем конструктор
+  class MyRootFactory extends RootFactory {
+    phoneNumber (): PhoneNumberModel {
+      const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
+      const meta = Metadata.re(re, /* ...rest: Re[] */)
+      return new PhoneNumberModel(this._config, this._defaultSettings, meta, null)
+    }
+  }
+
+  // Вариант 2.2 - Полностью копируем основную Factory и заменяем RootFactory на MyRootFactory в трех местах
   class MyFactory extends MyRootFactory {
     protected readonly _registeredScopeNames = new Set<string>()
 
@@ -252,13 +267,25 @@ test('Расширение классов', () => {
   }
 
   // Используем наш валидатор
-  const v = new MyFactory()
+
+  // Вариант 1
+  const v = new MySimpleFactory()
 
   const phoneModel = v.phoneNumber()
   expect(phoneModel.validate('123-456-7890').value)
     .toBe('123-456-7890')
   // @ts-expect-error
   expect(phoneModel.validate('123-456-789').details.errors[0].message)
+    .toContain('Invalid phone number format')
+
+  // Вариант 2 полность эквивалентен и позволяет расширять конфигурацию
+  const v2 = new MyFactory()
+
+  const phoneModel2 = v2.phoneNumber()
+  expect(phoneModel2.validate('123-456-7890').value)
+    .toBe('123-456-7890')
+  // @ts-expect-error
+  expect(phoneModel2.validate('123-456-789').details.errors[0].message)
     .toContain('Invalid phone number format')
 })
 

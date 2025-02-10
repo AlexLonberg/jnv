@@ -22,19 +22,18 @@ import { Factory } from 'jnv'
 
 const v = new Factory()
 
-const userModel = v.obj({
+const userModel = v/*.scope('UserModel')*/.obj({
   id: v.positive(), // эквивалентно int().min(1)
   name: v.str().min(3),
   email: /^[0-9a-z]+@[0-9a-z]+\.[a-z]+$/i, // эквивалентно v.re(...)
   gender: v.enum('male', 'female').optional(),
-  // stopIfError эквивалент model.stopError()
-  // игнорировать ошибку и установить значение по умолчанию,
-  // или `null` если его нет.
-  address: v.scope('AddressModel', { stopIfError: true }).obj({
+  // Оборачиваем объект в тип, для возможности применения .stopError() - игнорировать
+  // ошибку и установить значение по умолчанию или `null`(если его нет).
+  address: v.obj({
     city: v.str().nonempty(), // эквивалентно .str().min(1)
     street: 'any string',     // эквивалентно .str()
     zipCode: ''
-  })
+  }).stopError()
 })
 
 const sampleUser = {
@@ -169,29 +168,29 @@ class PhoneNumberModel extends BaseModel<string> {
     return ctx.throwFaultyValueError(value, 'Invalid phone number format')
   }
 }
+```
 
-// Добавим к фабрике новый тип, используя кеш regExp
-class MyRootFactory extends RootFactory {
+Есть два варианта добавления фабричной функции:
+
+1. Добавить фабричный метод к `RootFactory` и обновить конструктор удалив ненужный `RegExpCache`.
+2. Добавить фабричный метод к `RootFactory` и обновить класс `Factory` - это позволяет расширять конфигурацию, но чаще всего избыточно, так как методы настроек(`stopError()/removeFaulty()`) доступны на экземплярах.
+
+Используем _Вариант 1_:
+
+```ts
+class MyFactory extends RootFactory {
+  // Копируем сигнатуру RootFactory без RegExpCache
+  constructor(options?: undefined | null | TOptions) {
+    super(options)
+  }
+  
   phoneNumber (): PhoneNumberModel {
+    // Добавим к фабрике новый тип, используя кеш regExp
     const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
     const meta = Metadata.re(re, /* ...rest: Re[] */)
     // Последний параметр null, это ключ Model.key и здесь он не нужен.
     // Это свойство будет автоматически привязано к свойству объекта.
     return new PhoneNumberModel(this._config, this._defaultSettings, meta, null)
-  }
-}
-
-// Полностью копируем основную фабрику с обновленной MyRootFactory
-class MyFactory extends MyRootFactory {
-  constructor(options?: undefined | null | TOptions) {
-    super(options)
-  }
-  protected _getScopeNameOf (name: string): string {
-    return name // Для примера не будем копировать тело метода и возвратим строку как есть
-  }
-  scope (name: string, options?: undefined | null | TValidateOptions): MyRootFactory {
-    const config = this._config.extends(options ?? null, this._getScopeNameOf(isString(name) ? name : ''))
-    return new MyRootFactory(config, this._regExpCache)
   }
 }
 
