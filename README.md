@@ -187,7 +187,7 @@ class MyFactory extends MyRootFactory {
     super(options)
   }
   protected _getScopeNameOf (name: string): string {
-    return name // Для примера не будет копировать тело медода и возвратим строку как есть
+    return name // Для примера не будем копировать тело метода и возвратим строку как есть
   }
   scope (name: string, options?: undefined | null | TValidateOptions): MyRootFactory {
     const config = this._config.extends(options ?? null, this._getScopeNameOf(isString(name) ? name : ''))
