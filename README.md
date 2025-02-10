@@ -27,7 +27,7 @@ const userModel = v.obj({
   name: v.str().min(3),
   email: /^[0-9a-z]+@[0-9a-z]+\.[a-z]+$/i, // эквивалентно v.re(...)
   gender: v.enum('male', 'female').optional(),
-  // stopIfError эквивалент model.stopError(null)
+  // stopIfError эквивалент model.stopError()
   // игнорировать ошибку и установить значение по умолчанию,
   // или `null` если его нет.
   address: v.scope('AddressModel', { stopIfError: true }).obj({
