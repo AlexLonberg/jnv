@@ -22,7 +22,7 @@ import { Factory } from 'jnv'
 
 const v = new Factory()
 
-const userModel = v/*.scope('UserModel')*/.obj({
+const userModel = v.obj({
   id: v.positive(), // эквивалентно int().min(1)
   name: v.str().min(3),
   email: /^[0-9a-z]+@[0-9a-z]+\.[a-z]+$/i, // эквивалентно v.re(...)
@@ -183,7 +183,7 @@ class MyFactory extends RootFactory {
   constructor(options?: undefined | null | TOptions) {
     super(options)
   }
-  
+
   phoneNumber (): PhoneNumberModel {
     // Добавим к фабрике новый тип, используя кеш regExp
     const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
