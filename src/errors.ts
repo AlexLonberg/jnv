@@ -71,7 +71,7 @@ const errorMessages = Object.freeze({
       message: `The value has not been configured, property path: '${propertyPath}', value or type '${valueOrType}'.${msg}`
     }
   },
-  UnknownError (propertyPath: string, message?: string): TErrorDetail {
+  UnknownError (propertyPath: string, message?: undefined | null | string): TErrorDetail {
     const msg = isNonemptyString(message) ? `\n${message}` : ''
     return {
       code: errorCodes.UnknownError,
@@ -85,74 +85,51 @@ const errorMessages = Object.freeze({
  * Базовый класс ошибок валидатора.
  */
 class ValidatorError extends Error {
-  /** Путь или имя свойства. */
-  readonly path: string
-  constructor(message: string, path: string) {
-    super(message)
-    this.path = path
+  readonly detail: TErrorDetail
+
+  constructor(detail: TErrorDetail) {
+    super(detail.message)
+    this.detail = detail
   }
+
   get code (): TErrorCode {
-    return errorCodes.UnknownError
+    return this.detail.code
   }
 }
 
 /**
  * Неопределенная ошибка вызванная внешними факторами не предусмотренными валидатором.
  */
-class UnknownError extends ValidatorError {
-  override get code (): 0 {
-    return errorCodes.UnknownError
-  }
-}
+class UnknownError extends ValidatorError { }
 
 /**
  * Ошибки конфигурации.
  */
-class ConfigureError extends ValidatorError {
-  override get code (): 1 {
-    return errorCodes.ConfigureError
-  }
-}
+class ConfigureError extends ValidatorError { }
 
 /**
  * Ошибки конфигурации.
  * Дальнейшая конфигурация свойства запрещена.
  */
-class ModelIsFrozenError extends ValidatorError {
-  override get code (): 2 {
-    return errorCodes.ModelIsFrozenError
-  }
-}
+class ModelIsFrozenError extends ValidatorError { }
 
 /**
  * Ошибка валидации.
  * В объекте отсутствует обязательное свойство.
  */
-class RequiredPropertyError extends ValidatorError {
-  override get code (): 3 {
-    return errorCodes.RequiredPropertyError
-  }
-}
+class RequiredPropertyError extends ValidatorError { }
 
 /**
  * Ошибка валидации.
  * Тип или значение свойства недопустимы.
  */
-class FaultyValueError extends ValidatorError {
-  override get code (): 4 {
-    return errorCodes.FaultyValueError
-  }
-}
+class FaultyValueError extends ValidatorError { }
 
 /**
  * Ошибка валидации.
  * Этот тип не был  сконфигурирован из-за недопустимости типа значения..
  */
-class NotConfiguredError extends ValidatorError {
-  override get code (): 5 {
-    return errorCodes.NotConfiguredError
-  }
-}
+class NotConfiguredError extends ValidatorError { }
 
 /**
  * Возвращает один из конструкторов {@link ValidatorError}.

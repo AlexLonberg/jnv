@@ -168,7 +168,7 @@ abstract class Model<T extends JsonLike> {
     const detail = errorMessages.ConfigureError(this._key, message)
     this._meta.addConfigError(detail)
     if (this._config.throwIfConfigureError) {
-      throw new ConfigureError(detail.message, detail.path)
+      throw new ConfigureError(detail)
     }
   }
 
@@ -177,7 +177,7 @@ abstract class Model<T extends JsonLike> {
       const detail = errorMessages.ModelIsFrozenError(this._key)
       this._meta.addConfigError(detail)
       if (this._config.throwIfConfigureError) {
-        throw new ModelIsFrozenError(detail.message, detail.path)
+        throw new ModelIsFrozenError(detail)
       }
       return true
     }
@@ -216,7 +216,7 @@ abstract class Model<T extends JsonLike> {
       if (e instanceof ValidatorError) {
         throw e
       }
-      throw new UnknownError(messageFromError(e) ?? '', ctx.getPathAsStr())
+      throw new UnknownError(errorMessages.UnknownError(ctx.getPathAsStr(), messageFromError(e)))
     }
     const result = { ok: false, value: null, details: ctx.collectErrors() } as any
     if (!result.details) {
@@ -906,7 +906,8 @@ class RootFactory {
   protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: null | NoneModel | T): NoneModel | T {
     const detail = errorMessages.ConfigureError(name, message)
     if (this._config.throwIfConfigureError) {
-      throw new ConfigureError(detail.message, propertyNameToString(name))
+      detail.path = propertyNameToString(name)
+      throw new ConfigureError(detail)
     }
     if (!model) {
       model = new NoneModel(this._config, this._defaultSettings, Metadata.none(), name)
