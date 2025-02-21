@@ -2,7 +2,8 @@ import { test, expectTypeOf } from 'vitest'
 import type { JsonPrimitive, JsonLike, TPropertyName, TResult } from './types.js'
 import { Factory } from './models.js'
 
-// NOTE Это тест TS и он не для запуска. Не будет работать без подключения рекурсивных фильтров типов. Описание в ./filters.ts
+// NOTE Это тест вывода типов TS и он не для запуска. Не будет работать без подключения рекурсивных фильтров типов.
+// Описание в ./filters.ts
 // https://vitest.dev/guide/testing-types
 
 const v = new Factory()
@@ -163,4 +164,19 @@ test('pipe types', () => {
   expectTypeOf(v.pipe(strModel).validate(null).value).toEqualTypeOf<null | JsonLike>()
   expectTypeOf(v.pipe(strModel, objModel).validate(null).value).toEqualTypeOf<null | TExpected>()
   expectTypeOf(v.pipe(strModel, customModel, objModel).validate(null).value).toEqualTypeOf<null | TExpected>()
+
+  // Вложенный pipe
+  const withPipe = v.obj({
+    nested: {
+      pipe: v.str().pipe(v.obj({ foo: 123 }))
+    }
+  })
+  type TPipeExpected = {
+    nested: {
+      pipe: {
+        foo: number
+      }
+    }
+  }
+  expectTypeOf(withPipe.validate(null).value).toEqualTypeOf<null | TPipeExpected>()
 })

@@ -34,11 +34,8 @@ export default defineConfig({
 // // Конфигурация для тестирования в NodeJS
 // export default defineConfig({
 //   test: {
-//     // https://vitest.dev/config/#setupfiles
-//     setupFiles: ['vitest_test_extends/index.ts'],
 //     include: [
-//       'src/**/*.test.ts',
-//       'vitest_test_extends/**/*.test.ts'
+//       'src/**/*.test.ts'
 //     ],
 //     // https://vitest.dev/guide/coverage.html
 //     coverage: {

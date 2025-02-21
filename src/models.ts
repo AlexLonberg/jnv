@@ -699,7 +699,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     return { ok: true, value: values as T }
   }
 
-  protected _validateStrictItems (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
+  protected _validateStrictItemsModeCopy (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
     const newValues: any[] = []
     for (let i = 0; i < values.length; ++i) {
       const item = values[i]
@@ -751,7 +751,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     return { ok: true, value: values as T }
   }
 
-  protected _validateIgnoreItems (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
+  protected _validateIgnoreItemsModeCopy (ctx: Context, values: any[], expectedType: UnionModel<any>): TRes<T> {
     const newValues: any[] = []
     const release = ctx.enterOnlyWarning()
     try {
@@ -800,12 +800,12 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
 
     if (this._settings.removeFaulty) {
       return this._config.modeCopyArr
-        ? this._validateIgnoreItems(ctx, value, expectedType)
+        ? this._validateIgnoreItemsModeCopy(ctx, value, expectedType)
         : this._validateIgnoreItemsModeRewrite(ctx, value, expectedType)
     }
     else {
       return this._config.modeCopyArr
-        ? this._validateStrictItems(ctx, value, expectedType)
+        ? this._validateStrictItemsModeCopy(ctx, value, expectedType)
         : this._validateStrictItemsModeRewrite(ctx, value, expectedType)
     }
   }
@@ -832,7 +832,7 @@ class TupleModel<T extends JsonArray> extends BaseModel<T> {
     return { ok: true, value: value as T }
   }
 
-  protected _validateItems (ctx: Context, value: any[], expectedType: Model<any>[]): TRes<T> {
+  protected _validateItemsModeCopy (ctx: Context, value: any[], expectedType: Model<any>[]): TRes<T> {
     const newValues = []
     for (let i = 0; i < expectedType.length; ++i) {
       const item = value[i]
@@ -864,7 +864,7 @@ class TupleModel<T extends JsonArray> extends BaseModel<T> {
     }
 
     return this._config.modeCopyArr
-      ? this._validateItems(ctx, value, expectedType)
+      ? this._validateItemsModeCopy(ctx, value, expectedType)
       : this._validateItemsModeRewrite(ctx, value, expectedType)
   }
 }
@@ -1019,7 +1019,7 @@ class RootFactory {
     if (isObject(value)) {
       return this._object(name, value)
     }
-    // Это может сработать для таких типов как `undefined | bigint`.
+    // Это может сработать для таких типов как `undefined | bigint` не являющихся типами JsonLike.
     return this._addOrThrowConfigureError(name, `Недопустимый тип: value: ${valueToString(value)}.`, null)
   }
 

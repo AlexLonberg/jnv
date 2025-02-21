@@ -13,6 +13,7 @@ import type {
   Model,
   // BaseModel,
   // BaseRangeModel,
+  // PipeModel,
   // RawModel,
   // CustomModel,
   // BoolModel,
@@ -26,9 +27,10 @@ import type {
   // UnionModel
 } from './models.js'
 
-// NOTE  Этот файл содержит два набора типов:
+// NOTE Этот файл содержит два набора типов:
 //
 // 1. РЕКУРСИВНЫЕ ТИПЫ (для проверки логики вывода типов filters.test.ts):
+//    - Позволяют выводит JsonLike тип модели из смешанной декларации моделей.
 //    - Используются ТОЛЬКО для проверки корректности вывода типов в тестах.
 //    - НЕ используются в основном коде приложения.
 //    - Вызывают жуткие тормоза IDE при редактировании кода.
@@ -88,6 +90,8 @@ import type {
 //   : T extends UnionModel<infer V>
 //   ? V
 //   : T extends CustomModel<infer V>
+//   ? V
+//   : T extends PipeModel<infer V>
 //   ? V
 //   : never
 

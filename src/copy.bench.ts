@@ -2,10 +2,9 @@ import { bench } from 'vitest'
 import { plainCopy } from './utils.js'
 import { Factory } from './models.js'
 
-// NOTE: Этот тест производительности направлен на выявление разницы в скорости создания
-//       нового объекта/массива или перезаписи элементов исходного.
-//       Как видно: Создание занимает значительное время,
-//       а результат ничем не отличается от режима createMode:'obj'
+// NOTE: Этот тест производительности направлен на выявление разницы в скорости создания нового объекта/массива или
+//       перезаписи элементов исходного.
+//       Как видно: Создание занимает значительное время, а результат ничем не отличается от режима createMode:'obj'
 
 const vAll = new Factory({ createMode: 'all' }) // default
 const vObj = new Factory({ createMode: 'obj' })
@@ -36,7 +35,7 @@ const objModel4 = vNone.obj({
 const rndArray = (length: number) => {
   const arr: { foo: number | string }[] = []
   for (let i = 0; i < length; ++i) {
-    arr.push(((i + 1) % 10 === 0) ? { foo: 'bar' } : { foo: 123 })
+    arr.push(((i + 1) % 10 === 0) ? { foo: 'error' } : { foo: 123 })
   }
   return arr
 }
@@ -51,16 +50,19 @@ const data3 = plainCopy(data1)
 const data4 = plainCopy(data1)
 
 bench('all', () => {
-  objModel1.validate(data1)
+  objModel1.validate(data1) // полностью пересоздает объекты/массивы (по умолчанию)
 })
 bench('obj', () => {
-  objModel2.validate(data2) // оптимально, гарантирует своиства определенные в модели и не сильно проведает в скорости по сравнению с none
+  objModel2.validate(data2) // оптимально, гарантирует свойства определенные в модели, так как объекты создаются, а
+  //                           массивы фильтруются(removeFaulty()), и не сильно проседает в скорости сравнительно с none
 })
 bench('arr', () => {
-  objModel3.validate(data3)
+  objModel3.validate(data3) // абсолютно бесполезная настройка - создает массивы, но не трогает объекты у которых могут
+  //                           оказаться лишние свойства
 })
 bench('none', () => {
-  objModel4.validate(data4)
+  objModel4.validate(data4) // хороший вариант, когда не нужно проверять все свойства, а оставить объект как есть с
+  //                           частичной валидацией
 })
 
 // ✓  chromium  src/copy.bench.ts 2458ms
@@ -76,3 +78,6 @@ bench('none', () => {
 // 1.05x faster than arr
 // 1.31x faster than obj
 // 5.27x faster than all
+
+// Здесь не приводится более реальный пример, когда нет так много элементов массива и столько объектов.
+// Разница становится несущественной и вполне можно использовать любой подходящий режим.
