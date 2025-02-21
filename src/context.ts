@@ -149,10 +149,10 @@ class Context {
   /**
    * Регистрирует ошибку и вызывает исключение или возвращает результат.
    */
-  protected _throwOrResult (detail: TErrorDetail, cls: (new (msg: string, path: string) => any)): TRes<any> {
+  protected _throwOrResult (detail: TErrorDetail, cls: (new (detail: TErrorDetail) => any)): TRes<any> {
     this.addError(detail)
     if (this.isThrowEnabled()) {
-      throw new cls(detail.message, detail.path)
+      throw new cls(detail)
     }
     const settings = this._modelTracker.top()?.settings ?? this._settings
     return settings.stopIfError
