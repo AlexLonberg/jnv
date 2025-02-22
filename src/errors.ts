@@ -1,4 +1,4 @@
-import type { TPropertyName } from './types.js'
+import type { TPropertyName, TCustomValidate, TResult } from './types.js'
 import { isNonemptyString, propertyNameToString } from './utils.js'
 
 /** Коды ошибок. */
@@ -82,6 +82,41 @@ const errorMessages = Object.freeze({
 } as const)
 
 /**
+ * Вспомогательные функции приводящие сообщения к формату `{ok: false, value: null, details: {error: TErrorDetail[]}}`.
+ * Функции могут установить только одно свойство `error` и массив с одной ошибкой `error: [TErrorDetail]`.
+ *
+ * Используйте набор этих функций в пользовательском валидаторе {@link TCustomValidate}, который должен возвратить
+ * унифицированный формат{@link TResult}.
+ *
+ * @example
+ * ```ts
+ * if(... error){
+ *   return errorDetails.FaultyValueError(path, value, message) resultErrors errorResults
+ * }
+ * ```
+ */
+const errorResults = Object.freeze({
+  ConfigureError (propertyName: TPropertyName, message?: string): TResult<unknown> {
+    return { ok: false, value: null, details: { errors: [errorMessages.ConfigureError(propertyName, message)] } }
+  },
+  ModelIsFrozenError<T = unknown> (propertyName: TPropertyName, message?: string): TResult<T> {
+    return { ok: false, value: null, details: { errors: [errorMessages.ModelIsFrozenError(propertyName, message)] } }
+  },
+  RequiredPropertyError<T = unknown> (propertyPath: string, requiredPropertyName: TPropertyName, message?: string): TResult<T> {
+    return { ok: false, value: null, details: { errors: [errorMessages.RequiredPropertyError(propertyPath, requiredPropertyName, message)] } }
+  },
+  FaultyValueError<T = unknown> (propertyPath: string, valueOrType: string, message?: string): TResult<T> {
+    return { ok: false, value: null, details: { errors: [errorMessages.FaultyValueError(propertyPath, valueOrType, message)] } }
+  },
+  NotConfiguredError<T = unknown> (propertyPath: string, valueOrType: string, message?: string): TResult<T> {
+    return { ok: false, value: null, details: { errors: [errorMessages.NotConfiguredError(propertyPath, valueOrType, message)] } }
+  },
+  UnknownError<T = unknown> (propertyPath: string, message?: undefined | null | string): TResult<T> {
+    return { ok: false, value: null, details: { errors: [errorMessages.UnknownError(propertyPath, message)] } }
+  }
+} as const)
+
+/**
  * Базовый класс ошибок валидатора.
  */
 class ValidatorError extends Error {
@@ -151,6 +186,7 @@ export {
   type TErrorCode,
   type TErrorDetail,
   errorMessages,
+  errorResults,
   ValidatorError,
   UnknownError,
   ConfigureError,

@@ -4,7 +4,8 @@ import {
   unknownPropertyName,
   type TUnknownPropertyName,
   unknownValue,
-  type TUnknownValue
+  type TUnknownValue,
+  type TPropertyName
 } from './types.js'
 
 const _hasOwn = ('hasOwn' in Object && typeof Object.hasOwn === 'function')
@@ -198,6 +199,13 @@ function propertyNameToString (value: any): string {
 }
 
 /**
+ * Возвращает строковое представление пути {@link TPropertyName}`[]`.
+ */
+function propertyPathToString (propertyPath: TPropertyName[]): string {
+  return isArray(propertyPath) ? propertyPath.map((name) => propertyNameToString(name)).join('') : unknownPropertyName
+}
+
+/**
  * Приводит `value` к Json или возвращает специальное значение {@link TUnknownValue}.
  */
 function valueToString (value: any): string {
@@ -237,6 +245,7 @@ export {
   shallowEquals,
   objInArray,
   propertyNameToString,
+  propertyPathToString,
   valueToString,
   messageFromError
 }

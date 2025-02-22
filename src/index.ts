@@ -12,6 +12,7 @@ export {
   type TErrorCode,
   type TErrorDetail,
   errorMessages,
+  errorResults,
   ValidatorError,
   UnknownError,
   ConfigureError,
@@ -122,6 +123,7 @@ export {
   shallowEquals,
   objInArray,
   propertyNameToString,
+  propertyPathToString,
   valueToString,
   messageFromError
 } from './utils.js'
