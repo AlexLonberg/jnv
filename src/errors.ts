@@ -91,7 +91,7 @@ const errorMessages = Object.freeze({
  * @example
  * ```ts
  * if(... error){
- *   return errorDetails.FaultyValueError(path, value, message) resultErrors errorResults
+ *   return errorResults.FaultyValueError(path, value, message)
  * }
  * ```
  */
