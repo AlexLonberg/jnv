@@ -1,5 +1,5 @@
 import type { TPropertyName, TCustomValidate, TResult } from './types.js'
-import { isNonemptyString, propertyNameToString } from './utils.js'
+import { isPlainObject, isIntNonnegative, isNonemptyString, propertyNameToString } from './utils.js'
 
 /** Коды ошибок. */
 const errorCodes = Object.freeze({
@@ -21,8 +21,8 @@ type TErrorCode = TErrorCodes[keyof TErrorCodes]
  */
 type TErrorDetail = {
   code: TErrorCode
-  path: string
   message: string
+  path: string
 }
 
 /**
@@ -130,6 +130,10 @@ class ValidatorError extends Error {
   get code (): TErrorCode {
     return this.detail.code
   }
+
+  override toString (): string {
+    return errorToString(this)
+  }
 }
 
 /**
@@ -180,6 +184,122 @@ function getClassErrorByCode (code: TErrorCode): typeof ValidatorError {
   return UnknownError
 }
 
+/**
+ * Возвращает имя ошибки по коду.
+ */
+function getClassNameErrorByCode (code: TErrorCode): keyof TErrorCodes {
+  switch (code) {
+    case 1: return 'ConfigureError'
+    case 2: return 'ModelIsFrozenError'
+    case 3: return 'RequiredPropertyError'
+    case 4: return 'FaultyValueError'
+    case 5: return 'NotConfiguredError'
+  }
+  return 'UnknownError'
+}
+
+function _tryAnyToString (value: any): null | string {
+  try {
+    const text = value.toString()
+    if (isNonemptyString(text)) {
+      return text
+    }
+  } catch (_) { /**/ }
+  return null
+}
+
+function _getStrValueOf<T extends null | string> (obj: object, property: string, defaultValue: T): string | T {
+  try {
+    const value = Reflect.get(obj, property)
+    if (value) {
+      return (_tryAnyToString(value) ?? defaultValue) as T
+    }
+  } catch (_) { /**/ }
+  return defaultValue as T
+}
+
+function _getClassNameError (obj: object, property: string): keyof TErrorCodes {
+  try {
+    const value = Reflect.get(obj, property)
+    if (isIntNonnegative(value)) {
+      return getClassNameErrorByCode(value as TErrorCode)
+    }
+  } catch (_) { /**/ }
+  return 'UnknownError'
+}
+
+function _detailToList (detail: TErrorDetail & Record<string, any>): string[] {
+  const keys = new Set(Object.keys(detail))
+  let cause: null | string = null
+  const msg = []
+
+  // Сперва извлекаем ожидаемые значения.
+  if (keys.has('code')) {
+    keys.delete('code')
+    msg.push(`${_getClassNameError(detail, 'code')}:`)
+    msg.push(`code: ${_getStrValueOf(detail, 'code', '0')}`)
+  }
+  if (keys.has('message')) {
+    keys.delete('message')
+    const value = _getStrValueOf(detail, 'message', null)
+    if (value) {
+      msg.push(`message:\n${value}`)
+    }
+  }
+  if (keys.has('cause')) {
+    keys.delete('cause')
+    try {
+      const prop = Reflect.get(detail, 'cause')
+      const value = errorToString(prop)
+      if (isNonemptyString(value)) {
+        cause = value
+      }
+    } catch (_) { /**/ }
+  }
+
+  // Далее проходимся по всем свойствам
+  for (const key of keys) {
+    const value = _getStrValueOf(detail, key, null)
+    if (value) {
+      msg.push(`${key}:\n${value}`)
+    }
+  }
+
+  if (cause) {
+    msg.push(`cause:\n${cause}`)
+  }
+  return msg
+}
+
+function errorToString (value: any): string {
+  if (value instanceof ValidatorError) {
+    const list = _detailToList(value.detail)
+    const stack = _getStrValueOf(value, 'stack', null)
+    if (stack) {
+      list.push(stack)
+    }
+    return list.join('\n')
+  }
+  if (value instanceof Error) {
+    const base = _tryAnyToString(value)
+    const stack = _getStrValueOf(value, 'stack', null)
+    if (!base) {
+      return stack ?? ''
+    }
+    if (stack) {
+      return `${base}\n${stack}`
+    }
+    return base
+  }
+  if (isPlainObject(value)) {
+    return _detailToList(value).join('\n')
+  }
+  if (value) {
+    return _tryAnyToString(value) ?? ''
+  }
+  return ''
+}
+
 export {
   errorCodes,
   type TErrorCodes,
@@ -194,5 +314,7 @@ export {
   RequiredPropertyError,
   FaultyValueError,
   NotConfiguredError,
-  getClassErrorByCode
+  getClassErrorByCode,
+  getClassNameErrorByCode,
+  errorToString
 }

@@ -20,7 +20,9 @@ export {
   RequiredPropertyError,
   FaultyValueError,
   NotConfiguredError,
-  getClassErrorByCode
+  getClassErrorByCode,
+  getClassNameErrorByCode,
+  errorToString
 } from './errors.js'
 export type {
   UJsonLiteralFilter,

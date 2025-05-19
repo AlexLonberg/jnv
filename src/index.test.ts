@@ -533,3 +533,53 @@ test('Все типы', () => {
   const pipeModel = v.str().pipe(v.custom((_path, value) => ({ ok: true, value: JSON.parse(value) })))
   expect(pipeModel.validate('{"foo":1}').value).toStrictEqual({ foo: 1 })
 })
+
+test('Частичная валидация', () => {
+  const v = new Factory({
+    throwIfConfigureError: true,
+    // массивы и объекты перезаписываются, объекты сохраняют свойства не предусмотренные моделью данных.
+    createMode: 'none',
+  })
+
+  // Аналоги с интерфейсом, где у всех моделей должен быть id
+  const tableRecord = v.obj({
+    id: v.positive()
+  })
+
+  // Частичные модели для разных таблиц
+  const userRecordPart = v.obj({
+    name: v.str().nonempty()
+  })
+  const tagRecordPart = v.obj({
+    tag: v.str().nonempty()
+  })
+
+  // Pipe-ы можно создавать с нуля, это требует минимум две модели валидации
+  const userRecord = v.pipe(tableRecord, userRecordPart)
+  // или просто расширить уже имеющуюся модель
+  const tagRecord = tableRecord.pipe(tagRecordPart)
+
+  expect(userRecord.validate({ id: 1, name: 'Jack' }).value).toStrictEqual({ id: 1, name: 'Jack' })
+  expect(tagRecord.validate({ id: 2, tag: 'best' }).value).toStrictEqual({ id: 2, tag: 'best' })
+
+  // ошибка на первом tableRecord - id не может быть 0
+  expect(userRecord.validate({ id: 0, name: 'Jack' })).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
+  // ошибка на втором tagRecord tag - пустая строка
+  expect(tagRecord.validate({ id: 2, tag: '' })).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
+
+  // У моделей созданных с опцией createMode:'none' не затираются свойства
+  expect(tagRecord.validate({ id: 2, tag: 'best', any: null }).value).toStrictEqual({ id: 2, tag: 'best', any: null })
+
+  // pipe может трансформировать любой тип данных.
+  // важно помнить - каждая следующая модель получит то что удачно валидировала предыдущая
+  const preValidator = v.str().pipe(v.custom((_, json) => {
+    const value = JSON.parse(json)
+    value.id += 5
+    return { ok: true, value }
+  }))
+  expect(preValidator.pipe(tagRecord).validate('{"id":1, "tag":"json"}').value).toStrictEqual({ id: 6, tag: 'json' })
+
+  // проверять объект внутри пользовательского валидатора нет никакой необходимости,
+  // структура будет проверена дальше, а любая ошибка обработается валидатором
+  expect(preValidator.pipe(tagRecord).validate('{"i...')).toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
+})
