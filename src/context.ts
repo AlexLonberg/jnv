@@ -7,12 +7,12 @@ import type {
   TOptions
 } from './types.js'
 import {
-  type TErrorDetail,
-  errorMessages,
+  type IErrorLike,
+  errorDetails,
   RequiredPropertyError,
   FaultyValueError,
   NotConfiguredError,
-  getClassErrorByCode
+  getErrorClassByCode
 } from './errors.js'
 import type { Config } from './config.js'
 import type { Settings } from './settings.js'
@@ -26,8 +26,8 @@ import { objInArray, valueToString } from './utils.js'
  * + Все функции `throw*()` вызываются валидаторами значений.
  */
 class Context {
-  protected readonly _errorDetails: TErrorDetail[] = []
-  protected readonly _warnDetails: TErrorDetail[] = []
+  protected readonly _errorDetails: IErrorLike[] = []
+  protected readonly _warnDetails: IErrorLike[] = []
   protected readonly _typeMatchingControl = new SafeStack()
   protected readonly _warningControl = new SafeStack()
   protected readonly _stopErrorControl = new SafeStack()
@@ -124,7 +124,7 @@ class Context {
    *  + Массивами, через {@link arrayFaultyValueError()}, при включенной настроке {@link TValidateOptions.removeFaulty}.
    *  + Пользовательским валидатором.
    */
-  addWarning (detail: TErrorDetail): void {
+  addWarning (detail: IErrorLike): void {
     if (this._typeMatchingControl.isEmpty() && !objInArray(this._warnDetails, detail)) {
       this._warnDetails.push(detail)
     }
@@ -133,7 +133,7 @@ class Context {
   /**
    * Регистрирует ошибку.
    */
-  addError (detail: TErrorDetail): void {
+  addError (detail: IErrorLike): void {
     if (this._typeMatchingControl.isEmpty()) {
       if (this._stopErrorControl.isEmpty() && this._warningControl.isEmpty()) {
         if (!objInArray(this._errorDetails, detail)) {
@@ -149,7 +149,7 @@ class Context {
   /**
    * Регистрирует ошибку и вызывает исключение или возвращает результат.
    */
-  protected _throwOrResult (detail: TErrorDetail, cls: (new (detail: TErrorDetail) => any)): TRes<any> {
+  protected _throwOrResult (detail: IErrorLike, cls: (new (detail: IErrorLike) => any)): TRes<any> {
     this.addError(detail)
     if (this.isThrowEnabled()) {
       throw new cls(detail)
@@ -164,7 +164,7 @@ class Context {
    * Вызывается только объектами при отсутствии обязательного свойства.
    */
   throwRequiredPropertyError (requiredPropertyName: string): TRes<any> {
-    const detail = errorMessages.RequiredPropertyError(this.getPathAsStr(), requiredPropertyName)
+    const detail = errorDetails.RequiredPropertyError(this.getPathAsStr(), requiredPropertyName)
     return this._throwOrResult(detail, RequiredPropertyError)
   }
 
@@ -172,7 +172,7 @@ class Context {
    * Вызывается для любого значения(исключая подбор) не прошедшего валидацию.
    */
   throwFaultyValueError (valueOrType: any, message?: string): TRes<any> {
-    const detail = errorMessages.FaultyValueError(this.getPathAsStr(), valueToString(valueOrType), message)
+    const detail = errorDetails.FaultyValueError(this.getPathAsStr(), valueToString(valueOrType), message)
     return this._throwOrResult(detail, FaultyValueError)
   }
 
@@ -180,18 +180,18 @@ class Context {
    * Вызывается на типе который не был сконфигурирован {@link NoneModel}.
    */
   throwNotConfiguredError (valueOrType: any, message?: string): TRes<any> {
-    const detail = errorMessages.NotConfiguredError(this.getPathAsStr(), valueToString(valueOrType), message)
+    const detail = errorDetails.NotConfiguredError(this.getPathAsStr(), valueToString(valueOrType), message)
     return this._throwOrResult(detail, NotConfiguredError)
   }
 
   /**
    * Вызывается с параметрами любой ошибки. В основном это для пользовательских валидаторов, для которых ошибки не определены.
    */
-  throwCustomError (detail: null | TErrorDetail): TRes<any> {
+  throwCustomError (detail: null | IErrorLike): TRes<any> {
     if (!detail) {
-      detail = errorMessages.UnknownError(this.getPathAsStr())
+      detail = errorDetails.UnknownError(this.getPathAsStr())
     }
-    const cls = getClassErrorByCode(detail.code)
+    const cls = getErrorClassByCode(detail.code)
     return this._throwOrResult(detail, cls)
   }
 
@@ -199,12 +199,12 @@ class Context {
    * Вызывается только массивами при установленной опции {@link TOptions.removeFaulty}.
    */
   arrayFaultyValueError (valueOrType: any): void {
-    const detail = errorMessages.FaultyValueError(this.getPathAsStr(), valueToString(valueOrType), 'Элемент массива проигнорирован.')
+    const detail = errorDetails.FaultyValueError(this.getPathAsStr(), valueToString(valueOrType), 'Элемент массива проигнорирован.')
     this.addWarning(detail)
   }
 
-  collectErrors (): null | { errors?: TErrorDetail[], warnings?: TErrorDetail[] } {
-    let details: null | { errors?: TErrorDetail[], warnings?: TErrorDetail[] } = null
+  collectErrors (): null | { errors?: IErrorLike[], warnings?: IErrorLike[] } {
+    let details: null | { errors?: IErrorLike[], warnings?: IErrorLike[] } = null
     if (this._errorDetails.length > 0) {
       details = { errors: this._errorDetails }
     }
@@ -219,9 +219,9 @@ class Context {
     return details
   }
 
-  protected _unclearResult<T extends ({ ok: true, details: { errors: TErrorDetail[], warnings?: TErrorDetail[] } } | { ok: false, details?: { errors?: TErrorDetail[], warnings?: TErrorDetail[] } })> (result: T): void {
+  protected _unclearResult<T extends ({ ok: true, details: { errors: IErrorLike[], warnings?: IErrorLike[] } } | { ok: false, details?: { errors?: IErrorLike[], warnings?: IErrorLike[] } })> (result: T): void {
     if (result.ok) {
-      const warnings = [errorMessages.UnknownError('', "Неожиданное наличие ошибок в 'details.errors'")]
+      const warnings = [errorDetails.UnknownError('', "Неожиданное наличие ошибок в 'details.errors'")]
       warnings.push(...result.details.errors)
       if (result.details.warnings) {
         warnings.push(...(result as any).details.warnings)
@@ -232,7 +232,7 @@ class Context {
       if (!result.details) {
         result.details = { errors: [] }
       }
-      result.details!.errors!.unshift(errorMessages.UnknownError('', "Неожиданное отсутствие ошибки в 'details.errors'"))
+      result.details!.errors!.unshift(errorDetails.UnknownError('', "Неожиданное отсутствие ошибки в 'details.errors'"))
     }
   }
 

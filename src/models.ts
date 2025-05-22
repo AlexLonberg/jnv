@@ -22,18 +22,18 @@ import {
   isString,
   isJsonPrimitive,
   hasOwn,
-  propertyNameToString,
-  valueToString,
-  messageFromError
+  propertyPathToString,
+  valueToString
 } from './utils.js'
 import {
-  errorCodes,
-  type TErrorDetail,
-  errorMessages,
-  ValidatorError,
+  type IErrorDetail,
+  type IErrorLike,
+  errorDetails,
+  JnvError,
   UnknownError,
   ConfigureError,
-  ModelIsFrozenError
+  ModelIsFrozenError,
+  insureErrorLike
 } from './errors.js'
 import { type Re, RegExpCache } from './re.js'
 import { Config, DefaultConfig } from './config.js'
@@ -115,13 +115,13 @@ abstract class Model<T extends JsonLike> {
     this._key = key
   }
 
-  protected _collectConfigureError (path: TPropertyName[], err: TErrorDetail[]): void {
+  protected _collectConfigureError (path: TPropertyName[], err: IErrorLike[]): void {
     const extendsPath = [...path, this._key]
     const errors = this._meta.getErrors()
     if (errors) {
-      const path = extendsPath.map((p) => propertyNameToString(p)).join('.')
+      const propPath = propertyPathToString(extendsPath)
       for (const item of errors) {
-        item.path = path
+        item.propertyPath = propPath
         err.push(item)
       }
     }
@@ -136,8 +136,8 @@ abstract class Model<T extends JsonLike> {
   /**
    * Возвращает все ошибки произошедшие в процессе конфигурирования текущего типа и дочерних элементов.
    */
-  getConfigureError (): null | TErrorDetail[] {
-    const errors: TErrorDetail[] = []
+  getConfigureError (): null | IErrorLike[] {
+    const errors: IErrorLike[] = []
     this._collectConfigureError([], errors)
     return errors.length > 0 ? errors : null
   }
@@ -165,7 +165,7 @@ abstract class Model<T extends JsonLike> {
   }
 
   protected _throwIfConfigureError (message?: string): void {
-    const detail = errorMessages.ConfigureError(this._key, message)
+    const detail = errorDetails.ConfigureError(this._key, message)
     this._meta.addConfigError(detail)
     if (this._config.throwIfConfigureError) {
       throw new ConfigureError(detail)
@@ -174,7 +174,7 @@ abstract class Model<T extends JsonLike> {
 
   protected _throwIfFrozen (): boolean {
     if (this.isFrozen()) {
-      const detail = errorMessages.ModelIsFrozenError(this._key)
+      const detail = errorDetails.ModelIsFrozenError(this._key)
       this._meta.addConfigError(detail)
       if (this._config.throwIfConfigureError) {
         throw new ModelIsFrozenError(detail)
@@ -213,17 +213,17 @@ abstract class Model<T extends JsonLike> {
 
   protected _validateHandleError<Target extends JsonLike> (ctx: Context, e: any): TResult<Target> {
     if (ctx.isThrowEnabled()) {
-      if (e instanceof ValidatorError) {
+      if (e instanceof JnvError) {
         throw e
       }
-      throw new UnknownError(errorMessages.UnknownError(ctx.getPathAsStr(), messageFromError(e)))
+      throw new UnknownError(errorDetails.UnknownError(ctx.getPathAsStr(), null, e))
     }
     const result = { ok: false, value: null, details: ctx.collectErrors() } as any
     if (!result.details) {
-      result.details = { errors: [errorMessages.UnknownError(ctx.getPathAsStr())] }
+      result.details = { errors: [errorDetails.UnknownError(ctx.getPathAsStr())] }
     }
     else if (!result.details.errors) {
-      result.details.errors = [errorMessages.UnknownError(ctx.getPathAsStr())]
+      result.details.errors = [errorDetails.UnknownError(ctx.getPathAsStr())]
     }
     return result
   }
@@ -502,41 +502,61 @@ class RawModel extends BaseModel<JsonLike> {
 }
 
 class CustomModel<T extends JsonLike> extends BaseModel<T> {
-  protected _registerErrorDetails (ctx: Context, details: { errors?: TErrorDetail[], warnings?: TErrorDetail[] }): null | TErrorDetail {
-    let item: TErrorDetail | null = null
-    const codes = Object.values(errorCodes)
-    const add = (method: 'addWarning' | 'addError', array: TErrorDetail[]) => {
-      for (const detail of array) {
-        const code = detail.code ?? 0
-        item = {
-          code: codes.includes(code) ? code : 0,
-          path: ctx.getPathAsStr(),
-          message: detail.message ?? 'Non message'
-        }
-        ctx[method](item)
+  protected _registerErrorDetails (
+    ctx: Context,
+    error?: undefined | null | IErrorDetail,
+    warning?: undefined | null | IErrorDetail,
+    errors?: undefined | null | IErrorDetail[],
+    warnings?: undefined | null | IErrorDetail[]
+  ): null | IErrorLike {
+    let errLike: IErrorLike | null = null
+    const add = (method: 'addWarning' | 'addError', array: IErrorDetail[]) => {
+      for (const raw of array) {
+        errLike = insureErrorLike(raw)
+        ctx[method](errLike)
       }
     }
-    if (isArray(details.warnings)) {
-      add('addWarning', details.warnings)
+    if (warnings) {
+      add('addWarning', warnings)
     }
-    item = null
-    if (isArray(details.errors)) {
-      add('addError', details.errors)
+    if (warning) {
+      add('addWarning', [warning])
     }
-    return item
+    errLike = null
+    if (errors) {
+      add('addError', errors)
+    }
+    if (error) {
+      add('addError', [error])
+    }
+    return errLike
   }
 
   protected override _validate (ctx: Context, value: any): TRes<T> {
     const result = (this._meta as unknown as Metadata<TCustomValidate<T>>).expectedType(ctx.getPath(), value)
     let ok = result.ok
-    let error = null
-    if (isPlainObject(result.details)) {
-      error = this._registerErrorDetails(ctx, result.details)
-      if (error) {
-        ok = false
+    const error = hasOwn(result, 'error') ? result.error : null
+    const warning = hasOwn(result, 'warning') ? result.warning : null
+    let errors: null | IErrorDetail[] = null
+    let warnings: null | IErrorDetail[] = null
+    if (hasOwn(result, 'details') && isPlainObject(result.details)) {
+      if (hasOwn(result.details, 'errors') && isArray(result.details.errors) && (result.details.errors as IErrorDetail[]).length > 0) {
+        errors = result.details.errors as IErrorDetail[]
+      }
+      if (hasOwn(result.details, 'warnings') && isArray(result.details.warnings) && (result.details.warnings as IErrorDetail[]).length > 0) {
+        warnings = result.details.warnings as IErrorDetail[]
       }
     }
-    return ok ? { ok, value: result.value } : ctx.throwCustomError(error)
+    const lastError = (error || warning || errors || warnings)
+      ? this._registerErrorDetails(ctx, error, warning, errors, warnings)
+      : null
+    if (lastError) {
+      if (!lastError.propertyPath) {
+        lastError.propertyPath = ctx.getPathAsStr()
+      }
+      ok = false
+    }
+    return ok ? { ok, value: result.value! } : ctx.throwCustomError(lastError)
   }
 }
 
@@ -904,9 +924,8 @@ class RootFactory {
   protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: null | NoneModel): NoneModel
   protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: T): T
   protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: null | NoneModel | T): NoneModel | T {
-    const detail = errorMessages.ConfigureError(name, message)
+    const detail = errorDetails.ConfigureError(name, message)
     if (this._config.throwIfConfigureError) {
-      detail.path = propertyNameToString(name)
       throw new ConfigureError(detail)
     }
     if (!model) {

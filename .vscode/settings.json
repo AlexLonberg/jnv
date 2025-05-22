@@ -1,8 +1,8 @@
 {
   // DOC VSCode glob patterns https://code.visualstudio.com/docs/editor/glob-patterns
   "files.exclude": {
-    // "**/.git": true,
-    // "**/node_modules": true
+    "**/.git": true,
+    "**/node_modules": true
   },
   "search.exclude": {
     "**/_*": true,

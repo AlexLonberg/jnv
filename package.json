@@ -1,6 +1,6 @@
 {
   "name": "jnv",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "JSON Validator",
   "keywords": [
     "json",
@@ -20,7 +20,9 @@
     "dist": "tsc --project tsconfig.dist.json"
   },
   "type": "module",
-  "private": true,
+  "peerDependencies": {
+    "js-base-error": "0.1.x"
+  },
   "devDependencies": {
     "@eslint/js": "^9.20.0",
     "@stylistic/eslint-plugin": "^3.1.0",
@@ -33,6 +35,7 @@
     "typescript-eslint": "^8.23.0",
     "vitest": "^3.0.5"
   },
+  "private": true,
   "exports": {
     ".": {
       "import": "./src/index.ts"

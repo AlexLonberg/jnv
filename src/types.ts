@@ -1,4 +1,4 @@
-import type { TErrorDetail, ValidatorError } from './errors.js'
+import type { IErrorDetail, IErrorLike, JnvError } from './errors.js'
 import type { BaseModel, Model, Factory } from './models.js'
 
 type JsonPrimitive = null | boolean | number | string
@@ -85,12 +85,43 @@ type TPropertyName = null | number | string
  * + `value`   - Результат валидации. Может присутствовать при `ok:false`, но только для экспертизы, а не использования.
  * + `details` - Всегда есть при `ok:false`, но может присутствовать и при `true`, если отключены выбросы исключений при незначительных ошибках.
  */
-type TResult<T> = { ok: true, value: T, details?: { warnings: TErrorDetail[] } } | { ok: false, value: null | T, details: { errors: TErrorDetail[], warnings?: TErrorDetail[] } }
+type TResult<T> = { ok: true, value: T, details?: { warnings: IErrorLike[] } } | { ok: false, value: null | T, details: { errors: IErrorLike[], warnings?: IErrorLike[] } }
 
 /**
- * Пользовательская функция. Результат ошибок регистрируется. Если валидатор должен поднять исключение, сообщение передается в конструктор {@link ValidatorError}.
+ * Упрощенный результат функции пользователького валидатора {@link TCustomValidate}.
  */
-type TCustomValidate<T extends JsonLike> = ((path: TPropertyName[], value: any) => TResult<T>)
+type TCustomResult<T> =
+  {
+    ok: true,
+    value: T,
+    details?: undefined | null | { errors?: undefined | null, warnings?: undefined | null | (IErrorLike | IErrorDetail)[] },
+    error?: undefined | null
+    warning?: undefined | null | (IErrorLike | IErrorDetail)
+  } |
+  {
+    ok: false,
+    value?: undefined | null | T,
+    details: { errors: (IErrorLike | IErrorDetail)[], warnings?: undefined | null | (IErrorLike | IErrorDetail)[] },
+    error?: undefined | null | (IErrorLike | IErrorDetail),
+    warning?: undefined | null | (IErrorLike | IErrorDetail)
+  } |
+  {
+    ok: false,
+    value?: undefined | null | T,
+    details?: undefined | null | { errors?: undefined | null | (IErrorLike | IErrorDetail)[], warnings?: undefined | null | (IErrorLike | IErrorDetail)[] },
+    error: (IErrorLike | IErrorDetail),
+    warning?: undefined | null | (IErrorLike | IErrorDetail)
+  }
+
+/**
+ * Пользовательская функция. Результат ошибок регистрируется.
+ *
+ * Пользовательская функция может возвратить результат валидации в формате {@link TResult} или установить одно поле
+ * `error` используя упрощенный вариант {@link TCustomResult}.
+ *
+ * Если валидатор должен поднять исключение, сообщение передается в конструктор {@link JnvError}.
+ */
+type TCustomValidate<T extends JsonLike> = ((path: TPropertyName[], value: any) => TResult<T> | TCustomResult<T>)
 
 type TConfigOptions = {
   /**
@@ -117,7 +148,7 @@ type TValidateOptions = {
    *
    * Разница между `true|false`:
    *
-   *  + `true`  - Любая ошибка, если она не исключена другими опциями, прерывает валидацию и поднимает исключение {@link ValidatorError}.
+   *  + `true`  - Любая ошибка, если она не исключена другими опциями, прерывает валидацию и поднимает исключение {@link JnvError}.
    *  + `false` - Любая ошибка так же прерывает валидацию, результат имеет `{ok: false, value: null, details: {...}}` детали с описанием ошибок.
    *
    * Остановить исключение для отдельных типов можно опциями {@link TValidateOptions.stopIfError} и {@link TValidateOptions.removeFaulty}.
@@ -172,6 +203,7 @@ export {
   type TValueType,
   type TPropertyName,
   type TResult,
+  type TCustomResult,
   type TCustomValidate,
   type TConfigOptions,
   type TValidateOptions,

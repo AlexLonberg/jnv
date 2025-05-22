@@ -4,7 +4,9 @@ import {
   type TPropertyName,
   type TRes,
   type TResult,
-  type TErrorDetail,
+  type TCustomResult,
+  type IErrorDetail,
+  type IErrorLike,
   type TValidateOptions,
   type TOptions,
   type Context,
@@ -12,9 +14,7 @@ import {
   defaultRootName,
   isString,
   plainCopy,
-  propertyNameToString,
   errorCodes,
-  errorMessages,
   ConfigureError,
   NotConfiguredError,
   RequiredPropertyError,
@@ -27,7 +27,8 @@ import {
   BaseModel,
   ObjModel,
   RootFactory,
-  Factory
+  Factory,
+  ModelIsFrozenError
 } from './index.js'
 
 test('Быстрый старт', () => {
@@ -179,8 +180,7 @@ test('Заморозка freeze()', () => {
   expect(model).not.toBe(modelFrozen)
 
   // После заморозки модели не могут менять параметры ...
-  const re = new RegExp(errorMessages.ModelIsFrozenError(null).message.slice(0, 10))
-  expect(() => (modelFrozen as ObjModel<any>).optional()).toThrow(re)
+  expect(() => (modelFrozen as ObjModel<any>).optional()).toThrow(ModelIsFrozenError)
   // ... но могут копировать модель, опция заморозки будет новой обертки сброшена
   const unfreeze = modelFrozen.copy() as ObjModel<any>
   expect(unfreeze.optional()).toBeInstanceOf(ObjModel)
@@ -305,19 +305,16 @@ test('Ошибки конфигурирования типов getConfigureError
 
   // Описание всех ошибок доступно через getConfigureError()
   // Этот метод рекурсивно собирает ошибки от корня исследуемого типа.
-  const errors: TErrorDetail[] | null = unsupported.getConfigureError()
+  const errors: IErrorLike[] | null = unsupported.getConfigureError()
   expect(errors).toBeInstanceOf(Array)
   // Первый вызов этого метода удаляет все полученные ошибки.
   expect(unsupported.getConfigureError()).toBe(null)
 
   // Путь к ошибке состоит из <root>.foo, здесь null это наш коревой объект без имени
-  const propPath = `${propertyNameToString(null)}.foo`
+  // const propPath = `${propertyNameToString(null)}.foo`
   // Найдем ожидаемую ошибку с кодом ConfigureError
-  const errorValue: TErrorDetail = errors!.find(({ code, path }) => code === errorCodes.ConfigureError && path === propPath)!
-  // Проверим сходится ли начало описания ошибки, для примера получим сообщение с константным началом в описании
-  const errorMessage = errorMessages.ConfigureError('foo').message.slice(0, 10)
-
-  expect(errorValue).toStrictEqual({ code: errorCodes.ConfigureError, path: propPath, message: expect.stringContaining(errorMessage) })
+  const errorValue: IErrorLike = errors!.find(({ code, propertyName }) => code === errorCodes.ConfigureError && propertyName === 'foo')!
+  expect(errorValue).toMatchObject({ code: errorCodes.ConfigureError, name: 'Jnv.ConfigureError', propertyName: 'foo' })
 
   // throw при конфигурации
   const vError = new Factory({ throwIfConfigureError: true })
@@ -513,22 +510,22 @@ test('Все типы', () => {
     .toStrictEqual({ ok: false, value: null, details: { errors: expect.any(Object) } })
 
   // Пользовательская функция
-  let err: null | TErrorDetail = null
-  function customValidate (_path: TPropertyName[], value: any): TResult<JsonLike> {
+  let err: null | IErrorLike | IErrorDetail = null
+  function customValidate (_path: TPropertyName[], value: any): TResult<JsonLike> | TCustomResult<JsonLike> {
     if (err) {
       // @ts-expect-error Значение ok будет установлено в false, автоматически, если есть поле errors
-      return { ok: true, value, details: { errors: [err] } }
+      return { ok: true, value, error: err }
     }
     return { ok: true, value }
   }
   const simpleCustom = v.custom(customValidate)
   expect(simpleCustom.validate('my value')).toStrictEqual({ ok: true, value: 'my value' })
-  err = { code: 0, path: 'это поле будет заменено, здесь нужно оставить пустую строку', message: 'Ошибка' }
+  err = { code: 0, /* propertyPath: 'это поле будет заменено, здесь нужно оставить пустую строку' */  message: 'Ошибка' }
   const result = simpleCustom.validate('my value')
   expect(result.ok).toBe(false)
   expect(result.value).toBe(null)
   expect(result.details?.warnings ?? null).toBe(null)
-  expect((result.details as any).errors[0]).toStrictEqual({ code: 0, path: defaultRootName, message: 'Ошибка' })
+  expect((result.details as any).errors[0]).toStrictEqual({ code: 0, propertyPath: defaultRootName, message: 'Ошибка' })
 
   const pipeModel = v.str().pipe(v.custom((_path, value) => ({ ok: true, value: JSON.parse(value) })))
   expect(pipeModel.validate('{"foo":1}').value).toStrictEqual({ foo: 1 })

@@ -27,10 +27,10 @@ function isBoolean (value: any): value is boolean {
 }
 
 /**
- * Является ли аргумент `value` числом исключая `NaN`.
+ * Является ли аргумент `value` числом исключая `NaN` и `Infinity`.
  */
 function isNumber (value: any): value is number {
-  return typeof value === 'number' && !Number.isNaN(value)
+  return Number.isFinite(value)
 }
 
 /**
@@ -202,7 +202,7 @@ function propertyNameToString (value: any): string {
  * Возвращает строковое представление пути {@link TPropertyName}`[]`.
  */
 function propertyPathToString (propertyPath: TPropertyName[]): string {
-  return isArray(propertyPath) ? propertyPath.map((name) => propertyNameToString(name)).join('') : unknownPropertyName
+  return isArray(propertyPath) ? propertyPath.map((name) => propertyNameToString(name)).join('.') : unknownPropertyName
 }
 
 /**
@@ -214,16 +214,6 @@ function valueToString (value: any): string {
   } catch (_) {
     return unknownValue
   }
-}
-
-/**
- * Пытается извлечь сообщение `Error.message`.
- * Эта функция не проверяет тип `Error`, а лишь наличие свойства `message:string`, если аргумент `e` является объектом.
- */
-function messageFromError (e: any): string | null {
-  return (isObject(e) && ('message' in e) && e.message && (typeof e.message === 'string'))
-    ? e.message
-    : null
 }
 
 export {
@@ -246,6 +236,5 @@ export {
   objInArray,
   propertyNameToString,
   propertyPathToString,
-  valueToString,
-  messageFromError
+  valueToString
 }

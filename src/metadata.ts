@@ -6,7 +6,7 @@ import {
   type TValueType,
   type TCustomValidate
 } from './types.js'
-import type { TErrorDetail } from './errors.js'
+import type { IErrorLike } from './errors.js'
 import type { Re } from './re.js'
 import type { Model, UnionModel } from './models.js'
 import { isArray, objInArray, plainCopy } from './utils.js'
@@ -37,7 +37,7 @@ class Metadata<T> {
   exclusive: boolean = false
 
   // Зарегистрированные ошибки типа при конфигуририровании.
-  protected _errorDetails: null | TErrorDetail[] = null
+  protected _errorDetails: null | IErrorLike[] = null
 
   constructor(type: TValueType) {
     this._type = type
@@ -57,7 +57,7 @@ class Metadata<T> {
   /**
    * Добавить ошибку вызванную на этапе конфигурации.
    */
-  addConfigError (...details: TErrorDetail[]): void {
+  addConfigError (...details: IErrorLike[]): void {
     if (!this._errorDetails) {
       this._errorDetails = []
     }
@@ -71,7 +71,7 @@ class Metadata<T> {
   /**
    * Возвращает все ошибки и очищает свойство `errorDetails`.
    */
-  getErrors (): null | TErrorDetail[] {
+  getErrors (): null | IErrorLike[] {
     const errors = this._errorDetails
     this._errorDetails = null
     return errors && errors.length > 0 ? errors : null

@@ -7,22 +7,33 @@ export {
   Context
 } from './context.js'
 export {
+  type TErrorLevel,
+  type IErrorDetail,
+  type IErrorLike,
+  ErrorLikeProto,
+  captureStackTrace,
+  createErrorLike,
+  isErrorLike,
+  safeAnyToString,
+  getStringOf,
+  errorDetailToList,
+  errorDetailToString,
+  nativeErrorToString,
+  errorToString,
   errorCodes,
   type TErrorCodes,
   type TErrorCode,
-  type TErrorDetail,
-  errorMessages,
+  errorDetails,
   errorResults,
-  ValidatorError,
+  JnvError,
   UnknownError,
   ConfigureError,
   ModelIsFrozenError,
   RequiredPropertyError,
   FaultyValueError,
   NotConfiguredError,
-  getClassErrorByCode,
-  getClassNameErrorByCode,
-  errorToString
+  getErrorClassByCode,
+  insureErrorLike
 } from './errors.js'
 export type {
   UJsonLiteralFilter,
@@ -100,6 +111,7 @@ export {
   type TValueType,
   type TPropertyName,
   type TResult,
+  type TCustomResult,
   type TCustomValidate,
   type TConfigOptions,
   type TValidateOptions,
@@ -126,6 +138,5 @@ export {
   objInArray,
   propertyNameToString,
   propertyPathToString,
-  valueToString,
-  messageFromError
+  valueToString
 } from './utils.js'
