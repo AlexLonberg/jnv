@@ -5,15 +5,15 @@
     "**/node_modules": true
   },
   "search.exclude": {
-    "**/_*": true,
-    "**/.git": true,
-    "**/node_modules": true,
-    ".temp/": true,
-    "dist/": true,
-    "**/*.json": true,
-    "eslint.config.js": true,
-    "vitest.config.ts": true,
-    "LICENSE.md": true,
+    // "**/_*": true,
+    // "**/.git": true,
+    // "**/node_modules": true,
+    // ".temp/": true,
+    // "dist/": true,
+    // "**/*.json": true,
+    // "eslint.config.js": true,
+    // "vitest.config.ts": true,
+    // "LICENSE.md": true,
   },
   "googleSearchContextMenu.items": {
     "MDNWeb": {
@@ -55,5 +55,9 @@
     // "source.organizeImports": "explicit",
     // "source.sortImports": "explicit"
   },
-  "typescript.tsdk": "node_modules\\typescript\\lib"
+  "typescript.tsdk": "node_modules\\typescript\\lib",
+  "vitest.rootConfig": "vitest.config.node.ts",
+  // В среде Node при запуске тестов Debug не желает работать опция child_process, которая по умолчанию
+  // "vitest.shellType": "child_process"
+  "vitest.shellType": "terminal"
 }

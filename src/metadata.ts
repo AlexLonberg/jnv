@@ -4,12 +4,12 @@ import {
   emptyValue,
   type TEmptyValue,
   type TValueType,
-  type TCustomValidate
+  type TCustomValidate,
 } from './types.js'
 import type { IErrorLike } from './errors.js'
 import type { Re } from './re.js'
 import type { Model, UnionModel } from './models.js'
-import { isArray, objInArray, plainCopy } from './utils.js'
+import { isArray, objInArray } from './utils.js'
 
 /**
  * Метаданные типа. Этот класс не проверяет параметры и ожидает валидные значения для всех вызовов или изменений свойств
@@ -102,9 +102,9 @@ class Metadata<T> {
    *
    * NOTE: Этот метод должен быть реализован при расширении класса совместно с проверкой метода `getAllModels()`.
    */
-  copy (): Metadata<T> {
+  copy (): this {
     const meta = new Metadata<any>(this._type)
-    meta._errorDetails = this._errorDetails ? plainCopy(this._errorDetails) : null
+    meta._errorDetails = this._errorDetails ? [...this._errorDetails] : null
     meta.min = this.min
     meta.max = this.max
     meta.exclusive = this.exclusive
@@ -113,7 +113,7 @@ class Metadata<T> {
       : isArray(this.expectedType)
         ? [...this.expectedType] // Model[]|Re[]
         : this.expectedType      // TEmptyValue|null|boolean|number|string|function|UnionModel
-
+    // @ts-expect-error
     return meta
   }
 

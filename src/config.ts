@@ -1,6 +1,5 @@
-import type { TOptions, TValidateSettings } from './types.js'
-import { hasOwn, isString, isPlainObject, plainCopy } from './utils.js'
-import { mergeBoolOrNumOptions, BoolOrNumOptions } from './options.js'
+import type { TOptions, TModelOptions } from './types.js'
+import { hasOwn, isPlainObject, plainCopy, mergeBoolOrIntProperties } from './utils.js'
 
 type TConfig = { [K in keyof TOptions]-?: Exclude<TOptions[K], undefined | null | string> }
 
@@ -34,22 +33,11 @@ const defaultConfig: TConfig = Object.freeze({
   removeFaulty: false
 } as const)
 
-class Config extends BoolOrNumOptions<TConfig> {
-  protected readonly _isScope: boolean
-  protected readonly _scopeName: string | null = null
+class Config {
+  protected readonly _options: TConfig
 
-  protected constructor(config: TConfig, scopeName?: undefined | null | string) {
-    super(config)
-    this._isScope = isString(scopeName)
-    this._scopeName = this._isScope ? scopeName! : null
-  }
-
-  get isScope (): boolean {
-    return this._isScope
-  }
-
-  get scopeName (): null | string {
-    return this._scopeName
+  constructor(options?: undefined | null | TOptions) {
+    this._options = isPlainObject(options) ? mergeBoolOrIntProperties(plainCopy(defaultConfig), transformStringOptions(plainCopy(options))) : plainCopy(defaultConfig)
   }
 
   get modeCopyObj (): boolean {
@@ -76,38 +64,15 @@ class Config extends BoolOrNumOptions<TConfig> {
     return this._options.removeFaulty
   }
 
-  getValidateOptions (): TValidateSettings {
+  getModelOptions (): Pick<TModelOptions, 'stopIfError' | 'removeFaulty'> {
     return {
       stopIfError: this._options.stopIfError,
       removeFaulty: this._options.removeFaulty
     }
   }
-
-  /**
-   * Сливает текущие установки с `options`, переименовывает, если установлен `scopeName` и возвращает копию.
-   */
-  extends (options?: undefined | null | TOptions, scopeName?: undefined | null | string): Config {
-    const config = this._mergeOrCopyOptions(options ? transformStringOptions(options) : null)
-    const name = isString(scopeName) ? scopeName : this._scopeName
-    return new Config(config, name)
-  }
-
-  /**
-   * Копия.
-   */
-  copy (): Config {
-    return new Config(plainCopy(this._options), this._scopeName)
-  }
-}
-
-class DefaultConfig extends Config {
-  constructor(options?: undefined | null | TOptions) {
-    super(isPlainObject(options) ? mergeBoolOrNumOptions(plainCopy(defaultConfig), transformStringOptions(options)) : plainCopy(defaultConfig))
-  }
 }
 
 export {
   transformStringOptions,
-  Config,
-  DefaultConfig
+  Config
 }

@@ -5,9 +5,9 @@ test('PathControl', () => {
   const stack = new PathTracker()
 
   expect(stack.isEmpty()).toBe(true)
-  let releaseA = stack.push('user')
-  let releaseB = stack.push('address')
-  let releaseC = stack.push('street')
+  let releaseA = stack.enter('user')
+  let releaseB = stack.enter('address')
+  let releaseC = stack.enter('street')
   expect(stack.isEmpty()).toBe(false)
 
   expect(stack.toString()).toBe('user.address.street')
@@ -19,9 +19,9 @@ test('PathControl', () => {
   releaseA()
   expect(stack.toString()).toBe('')
 
-  releaseA = stack.push('user')
-  releaseB = stack.push('address')
-  releaseC = stack.push('street')
+  releaseA = stack.enter('user')
+  releaseB = stack.enter('address')
+  releaseC = stack.enter('street')
   expect(stack.toString()).toBe('user.address.street')
 
   // Эмулируем ошибку не позволяющую вызвать releaseC()

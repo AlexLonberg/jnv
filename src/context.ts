@@ -1,24 +1,26 @@
-import type {
-  TRes,
-  TRelease,
-  TPropertyName,
-  TResult,
-  TValidateOptions,
-  TOptions
+import {
+  type TRes,
+  type TRelease,
+  type TPropertyName,
+  type TResult,
+  type TOptions,
+  defaultRootName
 } from './types.js'
 import {
   type IErrorLike,
+  ErrorLikeCollection,
+  ensureErrorLike,
   errorDetails,
   RequiredPropertyError,
   FaultyValueError,
   NotConfiguredError,
-  getErrorClassByCode
+  errorClassByCode
 } from './errors.js'
 import type { Config } from './config.js'
-import type { Settings } from './settings.js'
+import type { Options } from './options.js'
 import type { NoneModel, Model } from './models.js'
 import { SafeStack, PathTracker } from './stack.js'
-import { objInArray, valueToString } from './utils.js'
+import { objInArray, safeToJson } from './utils.js'
 
 /**
  * Контекст процесса валидации.
@@ -26,19 +28,19 @@ import { objInArray, valueToString } from './utils.js'
  * + Все функции `throw*()` вызываются валидаторами значений.
  */
 class Context {
-  protected readonly _errorDetails: IErrorLike[] = []
-  protected readonly _warnDetails: IErrorLike[] = []
-  protected readonly _typeMatchingControl = new SafeStack()
-  protected readonly _warningControl = new SafeStack()
-  protected readonly _stopErrorControl = new SafeStack()
+  protected readonly _errorDetails = new ErrorLikeCollection('errors')
+  protected readonly _warnDetails = new ErrorLikeCollection('warnings')
+  protected readonly _typeMatchingFlag = new SafeStack<null>()
+  protected readonly _warningFlag = new SafeStack<null>()
+  protected readonly _stopErrorFlag = new SafeStack<null>()
   protected readonly _pathTracker = new PathTracker()
-  protected readonly _modelTracker = new SafeStack<{ config: Config, settings: Settings<any> }>()
+  protected readonly _modelTracker = new SafeStack<Options<any>>()
   protected readonly _config: Config
-  protected readonly _settings: Settings<any>
+  protected readonly _options: Options<any>
 
-  constructor(config: Config, settings: Settings<any>) {
+  constructor(config: Config, options: Options<any>) {
     this._config = config
-    this._settings = settings
+    this._options = options
   }
 
   /**
@@ -46,16 +48,17 @@ class Context {
    * Пользователи обязаны своевременно вызывать {@link TRelease} используя `try/finally`.
    */
   enterTypeMatching (): TRelease {
-    return this._typeMatchingControl.push(null) // null ничего не означает, это реализация стека требует значения
+    // null здесь ни к чему, просто этого требует класс SafeStack
+    return this._typeMatchingFlag.enter(null)
   }
 
   /**
    * Регистрировать только предупреждения.
-   * Эту функцию использует массив при включении опции {@link Settings.removeFaulty}, для временной регистрации
+   * Эту функцию использует массив при включении опции {@link Options.removeFaulty}, для временной регистрации
    * предупреждений при ошибках и получения `{ok: false}` во внутреннем валидаторе.
    */
   enterOnlyWarning (): TRelease {
-    return this._warningControl.push(null)
+    return this._warningFlag.enter(null)
   }
 
   /**
@@ -63,14 +66,16 @@ class Context {
    */
   isThrowEnabled (): boolean {
     if (
-      !this._typeMatchingControl.isEmpty() ||
-      !this._stopErrorControl.isEmpty() ||
-      !this._warningControl.isEmpty() ||
-      this._settings.stopIfError
+      this._typeMatchingFlag.isAny() ||
+      this._warningFlag.isAny() ||
+      this._stopErrorFlag.isAny() ||
+      // эта опция копируется из конфига или устанавливается явно, поэтому _config.stopIfError проверять нет смысла,
+      // к тому же она установиться в _stopErrorFlag при входе в модель enterModel()
+      this._options.stopIfError
     ) {
       return false
     }
-    return this._modelTracker.top()?.config.throwIfError ?? this._config.throwIfError
+    return this._config.throwIfError
   }
 
   /**
@@ -79,8 +84,8 @@ class Context {
    *
    * @param key Имя свойства или индекс массива.
    */
-  pushKey (key: TPropertyName): TRelease {
-    return this._pathTracker.push(key)
+  enterKey (key: TPropertyName): TRelease {
+    return this._pathTracker.enter(key)
   }
 
   /**
@@ -103,29 +108,40 @@ class Context {
    * Этот метод позволяет видеть в какой точке дерева находится валидатор и какие параметры применяются к этой ветке.
    * Пользователи обязаны своевременно вызывать `TRelease` используя try/finally.
    *
-   * @param config   - Конфиг типа.
-   * @param settings - Настройки.
+   * @param options - Настройки.
    */
-  enterModel (config: Config, settings: Settings<any>): TRelease {
-    const exitModel = this._modelTracker.push({ config, settings })
-    if (settings.stopIfError) {
-      const exitScope = this._stopErrorControl.push(null)
+  enterModel (options: Options<any>): TRelease {
+    const exitModel = this._modelTracker.enter(options)
+    if (options.stopIfError) {
+      const exitStopError = this._stopErrorFlag.enter(null)
       return (() => {
         exitModel()
-        exitScope()
+        exitStopError()
       })
     }
     return exitModel
   }
 
   /**
+   * Текущее имя модели, если задано через freeze(name).
+   */
+  getModelName (): null | string {
+    return (this._modelTracker.top() ?? this._options)?.readonlyModelName ?? null
+  }
+
+  /**
    * Этот метод используется для регистрации предупреждений попадающих в результат валидации:
    *
-   *  + Массивами, через {@link arrayFaultyValueError()}, при включенной настроке {@link TValidateOptions.removeFaulty}.
+   *  + Массивами, через {@link arrayFaultyValueError()}, при включенной настроке {@link TOptions.removeFaulty}.
    *  + Пользовательским валидатором.
    */
   addWarning (detail: IErrorLike): void {
-    if (this._typeMatchingControl.isEmpty() && !objInArray(this._warnDetails, detail)) {
+    if (this._typeMatchingFlag.isEmpty() && !objInArray(this._warnDetails, detail)) {
+      const model = this.getModelName()
+      if (model) {
+        detail.model = model
+      }
+      detail.level = 'warning'
       this._warnDetails.push(detail)
     }
   }
@@ -134,29 +150,78 @@ class Context {
    * Регистрирует ошибку.
    */
   addError (detail: IErrorLike): void {
-    if (this._typeMatchingControl.isEmpty()) {
-      if (this._stopErrorControl.isEmpty() && this._warningControl.isEmpty()) {
+    if (this._typeMatchingFlag.isEmpty()) {
+      if (this._stopErrorFlag.isEmpty() && this._warningFlag.isEmpty()) {
         if (!objInArray(this._errorDetails, detail)) {
+          const model = this.getModelName()
+          if (model) {
+            detail.model = model
+          }
           this._errorDetails.push(detail)
         }
       }
       else if (!objInArray(this._warnDetails, detail)) {
+        detail.level = 'warning'
+        const model = this.getModelName()
+        if (model) {
+          detail.model = model
+        }
         this._warnDetails.push(detail)
       }
     }
+  }
+
+  attachErrorDetails (error: IErrorLike): void {
+    if (this._errorDetails.length > 0) {
+      if (!(error.errors instanceof ErrorLikeCollection)) {
+        error.errors = this._errorDetails
+      }
+      else if (error.errors !== this._errorDetails) {
+        error.errors = new ErrorLikeCollection('errors', new Set([...error.errors, ...this._errorDetails]))
+      }
+    }
+  }
+
+  attachWarningDetails (error: IErrorLike): void {
+    if (this._warnDetails.length > 0) {
+      if (!(error.warnings instanceof ErrorLikeCollection)) {
+        error.warnings = this._warnDetails
+      }
+      else if (error.warnings !== this._warnDetails) {
+        error.warnings = new ErrorLikeCollection('warnings', new Set([...error.warnings, ...this._warnDetails]))
+      }
+    }
+  }
+
+  /**
+   * Присоединяет или сливает все ошибки и предупреждения к полям {@link IErrorLike.errors} и {@link IErrorLike.warnings}.
+   *
+   * Этот метод не копирует списки ошибок, а передает ссылки на внутренние свойства {@link ErrorLikeCollection},
+   * и должен быть вызван в конце валидации или при поднятии исключения.
+   *
+   * @param error Объект ошибки.
+   */
+  attachErrors (error: IErrorLike): void {
+    this.attachErrorDetails(error)
+    this.attachWarningDetails(error)
   }
 
   /**
    * Регистрирует ошибку и вызывает исключение или возвращает результат.
    */
   protected _throwOrResult (detail: IErrorLike, cls: (new (detail: IErrorLike) => any)): TRes<any> {
-    this.addError(detail)
+    const options = this._modelTracker.top() ?? this._options
+    if (options.readonlyModelName) {
+      detail.model = options.readonlyModelName
+    }
     if (this.isThrowEnabled()) {
+      this.attachErrors(detail)
       throw new cls(detail)
     }
-    const settings = this._modelTracker.top()?.settings ?? this._settings
-    return settings.stopIfError
-      ? { ok: true, value: settings.getDefaultValue() }
+    this.addError(detail)
+    // Проверяем только текущий уровень, если на вложенных свойствах ошибка допустима, она будет подниматься до границы stopIfError
+    return options.stopIfError
+      ? { ok: true, value: options.getDefaultValue() }
       : { ok: false, value: null }
   }
 
@@ -172,7 +237,7 @@ class Context {
    * Вызывается для любого значения(исключая подбор) не прошедшего валидацию.
    */
   throwFaultyValueError (valueOrType: any, message?: string): TRes<any> {
-    const detail = errorDetails.FaultyValueError(this.getPathAsStr(), valueToString(valueOrType), message)
+    const detail = errorDetails.FaultyValueError(this.getPathAsStr(), safeToJson(valueOrType), message)
     return this._throwOrResult(detail, FaultyValueError)
   }
 
@@ -180,77 +245,64 @@ class Context {
    * Вызывается на типе который не был сконфигурирован {@link NoneModel}.
    */
   throwNotConfiguredError (valueOrType: any, message?: string): TRes<any> {
-    const detail = errorDetails.NotConfiguredError(this.getPathAsStr(), valueToString(valueOrType), message)
+    const detail = errorDetails.NotConfiguredError(this.getPathAsStr(), safeToJson(valueOrType), message)
     return this._throwOrResult(detail, NotConfiguredError)
   }
 
   /**
-   * Вызывается с параметрами любой ошибки. В основном это для пользовательских валидаторов, для которых ошибки не определены.
+   * Вызывается с параметрами любой ошибки. В основном это для пользовательских валидаторов, для которых ошибки не
+   * определены и функция может возвратить неопределенный результат.
    */
-  throwCustomError (detail: null | IErrorLike): TRes<any> {
-    if (!detail) {
-      detail = errorDetails.UnknownError(this.getPathAsStr())
-    }
-    const cls = getErrorClassByCode(detail.code)
-    return this._throwOrResult(detail, cls)
+  throwCustomError (detail: any | IErrorLike): TRes<any> {
+    const errorLike = ensureErrorLike(detail)
+    const cls = errorClassByCode(errorLike.code)
+    return this._throwOrResult(errorLike, cls)
   }
 
   /**
    * Вызывается только массивами при установленной опции {@link TOptions.removeFaulty}.
    */
-  arrayFaultyValueError (valueOrType: any): void {
-    const detail = errorDetails.FaultyValueError(this.getPathAsStr(), valueToString(valueOrType), 'Элемент массива проигнорирован.')
+  arrayFaultyValueError (valueOrType: any, message: string): void {
+    const detail = errorDetails.FaultyValueError(this.getPathAsStr(), safeToJson(valueOrType), message)
     this.addWarning(detail)
   }
 
-  collectErrors (): null | { errors?: IErrorLike[], warnings?: IErrorLike[] } {
-    let details: null | { errors?: IErrorLike[], warnings?: IErrorLike[] } = null
-    if (this._errorDetails.length > 0) {
-      details = { errors: this._errorDetails }
-    }
-    if (this._warnDetails.length > 0) {
-      if (details) {
-        details.warnings = this._warnDetails
-      }
-      else {
-        details = { warnings: this._warnDetails }
-      }
-    }
-    return details
-  }
-
-  protected _unclearResult<T extends ({ ok: true, details: { errors: IErrorLike[], warnings?: IErrorLike[] } } | { ok: false, details?: { errors?: IErrorLike[], warnings?: IErrorLike[] } })> (result: T): void {
-    if (result.ok) {
-      const warnings = [errorDetails.UnknownError('', "Неожиданное наличие ошибок в 'details.errors'")]
-      warnings.push(...result.details.errors)
-      if (result.details.warnings) {
-        warnings.push(...(result as any).details.warnings)
-      }
-      (result as any).details = { warnings }
+  protected _combineResultWithErrors<T> (result: TResult<T>): void {
+    result.ok = false
+    if (this._errorDetails.length === 1) {
+      result.error = this._errorDetails[0]!
+      this.attachWarningDetails(result.error)
     }
     else {
-      if (!result.details) {
-        result.details = { errors: [] }
-      }
-      result.details!.errors!.unshift(errorDetails.UnknownError('', "Неожиданное отсутствие ошибки в 'details.errors'"))
+      result.error = errorDetails.FaultyValueError(defaultRootName, safeToJson(result.value), 'Комбинированный результат ошибки неудачной валидации.')
+      this.attachErrors(result.error)
     }
+  }
+
+  protected _unclearResultWithError<T> (result: TResult<T>): void {
+    result.ok = false
+    result.error = errorDetails.FaultyValueError(defaultRootName, safeToJson(result.value), 'Результат не вернул причину ошибки.')
+    this.attachWarningDetails(result.error)
   }
 
   /**
    * Вызывается в основной {@link Model.validate()} и возвращает целевой результат с объектом или ошибкой.
    *
-   * @param result Результат последней операции валидации.
+   * @param result Результат валидации.
    */
   returnResult<T> (result: TRes<T>): TResult<T> {
-    const details = this.collectErrors()
-    if (details) {
-      // @ts-expect-error
-      result.details = details
+    // Если есть ошибки, комбинируем предупреждения в общую ошибку
+    if (this._errorDetails.length > 0) {
+      this._combineResultWithErrors(result as TResult<T>)
     }
-    // TODO Систему регистрации ошибок следует хорошо перепроверить на всех сценариях.
-    //      Важно, чтобы при ok:true, здесь не было ни одно details.errors
-    if ((result.ok && (result as any).details?.errors) || (!result.ok && !(result as any).details?.errors)) {
-      this._unclearResult(result as any)
+    else if (!result.ok) {
+      this._unclearResultWithError(result as TResult<T>)
+    }
+    else {
+      result.ok = true
+      if (this._warnDetails.length > 0) {
+        (result as TResult<T>).warning = errorDetails.CombinedError('warnings', this._warnDetails)
+      }
     }
     return result as TResult<T>
   }

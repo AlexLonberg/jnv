@@ -15,9 +15,9 @@
 
     npm i jnv
 
-`jnv` использует `"peerDependencies": { "js-base-error": "0.1.x" }`.
+`jnv` использует `"peerDependencies": { "js-base-error": "^0.2.0" }`.
 Использование `peerDependency` гарантирует, что все части вашего приложения (включая `jnv` и другие библиотеки) будут использовать один и тот же экземпляр базового класса ошибок `BaseError`.
-Если ваш проект не использует `js-base-error`, библиотека установится автоматически, иначе проверьте совместимость версии `js-base-error@0.1.x` в вашем `package.json`.
+Если ваш проект не использует `js-base-error`, библиотека установится автоматически, иначе проверьте совместимость версии `js-base-error@^0.2.0` в вашем `package.json`.
 
 ## 🔥 Пример использования
 
@@ -62,7 +62,7 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 * **raw()** - Необработанный `JsonLike`, объект не проверяется и возвращается как есть.
 * **bool()** - `boolean`.
 * **num()/nonnegative()/int()/positive()/range()** - `number`.
-* **str()/re()** - `string`
+* **str()/re()/nonempty()** - `string`
 * **literal()/enum()/null()** - Литералы.
 * **union()** - Один из вариантов `JsonLike`.
 * **obj()** - `PlainObject`.
@@ -91,10 +91,8 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 {
   ok: boolean,
   value: null | T,
-  details?: {
-    errors?: IErrorLike[],
-    warnings?: IErrorLike[]
-  }
+  error?: IErrorLike,  // только если ok: false
+  warning?: IErrorLike // только если нет error
 }
 ```
 
@@ -155,7 +153,7 @@ expect(arrModel.validate([
 Класс валидатора обязан реализовать единственный абстрактный метод `_validate()`
 
 ```ts
-import { BaseModel, RootFactory, Factory } from 'jnv'
+import { BaseModel, Factory } from 'jnv'
 
 class PhoneNumberModel extends BaseModel<string> {
   protected override _validate (ctx: Context, value: any): TRes<string> {
@@ -174,31 +172,24 @@ class PhoneNumberModel extends BaseModel<string> {
 }
 ```
 
-Есть два варианта добавления фабричной функции:
-
-1. Добавить фабричный метод к `RootFactory` и обновить конструктор удалив ненужный `RegExpCache`.
-2. Добавить фабричный метод к `RootFactory` и обновить класс `Factory` - это позволяет расширять конфигурацию, но чаще всего избыточно, так как методы настроек(`stopError()/removeFaulty()`) доступны на экземплярах.
-
-Используем _Вариант 1_:
+Расширяем фабрику валидаторов:
 
 ```ts
-class MyFactory extends RootFactory {
-  // Копируем сигнатуру RootFactory без RegExpCache
-  constructor(options?: undefined | null | TOptions) {
-    super(options)
-  }
-
+class MyFactory extends Factory {
   phoneNumber (): PhoneNumberModel {
     // Добавим к фабрике новый тип, используя кеш regExp
     const re = this._regExpCache.getOf(/^\d{3}-\d{3}-\d{4}$/)
     const meta = Metadata.re(re, /* ...rest: Re[] */)
     // Последний параметр null, это ключ Model.key и здесь он не нужен.
     // Это свойство будет автоматически привязано к свойству объекта.
-    return new PhoneNumberModel(this._config, this._defaultSettings, meta, null)
+    return new PhoneNumberModel(this._config, this._defaultOptions, meta, null)
   }
 }
+```
 
-// Используем наш валидатор
+Используем наш валидатор:
+
+```ts
 const v = new MyFactory()
 
 const phoneModel = v.phoneNumber()
@@ -206,6 +197,6 @@ const phoneModel = v.phoneNumber()
 expect(phoneModel.validate('123-456-7890').value)
   .toBe('123-456-7890')
 
-expect(phoneModel.validate('123-456-789').details.errors[0].message)
+expect(phoneModel.validate('123-456-789').error.message)
   .toContain('Invalid phone number format')
 ```

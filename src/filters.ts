@@ -5,10 +5,10 @@ import type {
   JsonLike
 } from './types.js'
 import type {
-  TModelLiteral,
-  TModelPrimitive,
-  TModelObject,
-  TModelArray,
+  TModelLiteralLike,
+  TModelPrimitiveLike,
+  TModelObjectLike,
+  TModelArrayLike,
   TModelLike,
   Model,
   // BaseModel,
@@ -37,7 +37,7 @@ import type {
 //    - Чтобы включить этот режим, РАСКОММЕНТИРУЙТЕ эту секцию и ЗАКОММЕНТИРУЙТЕ секцию "Упрощенные типы".
 //    - Тесты в файле `filters.test.ts`
 
-// type UJsonLiteralFilter<T extends TModelLiteral> =
+// type UJsonLiteralFilter<T extends TModelLiteralLike> =
 //   T extends JsonPrimitive
 //   ? T
 //   : T extends LiteralModel<infer V>
@@ -46,7 +46,7 @@ import type {
 //   ? V
 //   : never
 
-// type UJsonPrimitiveFilter<T extends TModelPrimitive> =
+// type UJsonPrimitiveFilter<T extends TModelPrimitiveLike> =
 //   T extends null
 //   ? null
 //   : T extends (boolean | BoolModel)
@@ -63,9 +63,9 @@ import type {
 //   ? V
 //   : never
 
-// type UJsonObjectFilter<T extends TModelObject> = { [K in keyof T]: T[K] extends TModelLike ? UJsonMultiFilter<T[K]> : never }
+// type UJsonObjectFilter<T extends TModelObjectLike> = { [K in keyof T]: T[K] extends TModelLike ? UJsonMultiFilter<T[K]> : never }
 
-// type UJsonArrayFilter<T extends TModelArray> =
+// type UJsonArrayFilter<T extends TModelArrayLike> =
 //   T extends (infer V)[]
 //   ? (V extends TModelLike ? UJsonMultiFilter<V> : never)[]
 //   : never
@@ -73,13 +73,13 @@ import type {
 // type UJsonMultiFilter<T extends TModelLike> =
 //   T extends RawModel
 //   ? JsonLike
-//   : T extends TModelPrimitive
+//   : T extends TModelPrimitiveLike
 //   ? UJsonPrimitiveFilter<T>
-//   : T extends TModelObject
+//   : T extends TModelObjectLike
 //   ? UJsonObjectFilter<T>
-//   : T extends TModelArray
+//   : T extends TModelArrayLike
 //   ? UJsonArrayFilter<T>
-//   : T extends TModelLiteral
+//   : T extends TModelLiteralLike
 //   ? UJsonLiteralFilter<T>
 //   : T extends ObjModel<infer V>
 //   ? V
@@ -93,6 +93,8 @@ import type {
 //   ? V
 //   : T extends PipeModel<infer V>
 //   ? V
+//   : T extends Model<infer V>
+//   ? V
 //   : never
 
 // type UJsonPipeLast<L extends Model<JsonLike>, T extends Model<JsonLike>> =
@@ -105,10 +107,10 @@ import type {
 //    - Не обеспечивают вывода точности типов, как рекурсивные типы, но не влияют на производительность.
 //    - Чтобы включить этот режим, ЗАКОММЕНТИРУЙТЕ секцию "Рекурсивные типы" и РАСКОММЕНТИРУЙТЕ эту секцию.
 
-type UJsonLiteralFilter<_T extends TModelLiteral> = JsonPrimitive
-type UJsonPrimitiveFilter<_T extends TModelPrimitive> = JsonPrimitive
-type UJsonObjectFilter<_T extends TModelObject> = JsonObject
-type UJsonArrayFilter<_T extends TModelArray> = JsonArray
+type UJsonLiteralFilter<_T extends TModelLiteralLike> = JsonPrimitive
+type UJsonPrimitiveFilter<_T extends TModelPrimitiveLike> = JsonPrimitive
+type UJsonObjectFilter<_T extends TModelObjectLike> = JsonObject
+type UJsonArrayFilter<_T extends TModelArrayLike> = JsonArray
 type UJsonMultiFilter<_T extends TModelLike> = JsonLike
 type UJsonPipeLast<_L extends Model<JsonLike>, _T extends Model<JsonLike>> = JsonLike
 

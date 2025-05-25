@@ -1,7 +1,6 @@
 export {
   transformStringOptions,
-  Config,
-  DefaultConfig
+  Config
 } from './config.js'
 export {
   Context
@@ -10,12 +9,16 @@ export {
   type TErrorLevel,
   type IErrorDetail,
   type IErrorLike,
+  type IErrorLikeCollection,
   ErrorLikeProto,
+  BaseError,
+  ErrorLikeCollection,
   captureStackTrace,
   createErrorLike,
+  ensureErrorLike,
   isErrorLike,
   safeAnyToString,
-  getStringOf,
+  safeGetStringOf,
   errorDetailToList,
   errorDetailToString,
   nativeErrorToString,
@@ -32,8 +35,9 @@ export {
   RequiredPropertyError,
   FaultyValueError,
   NotConfiguredError,
-  getErrorClassByCode,
-  insureErrorLike
+  CombinedError,
+  errorNameByCode,
+  errorClassByCode
 } from './errors.js'
 export type {
   UJsonLiteralFilter,
@@ -47,20 +51,19 @@ export {
   Metadata
 } from './metadata.js'
 export {
-  type TModelLiteral,
-  type TModelPrimitive,
-  type TModelObject,
-  type TModelArray,
+  type TModelLiteralLike,
+  type TModelPrimitiveLike,
+  type TModelObjectLike,
+  type TModelArrayLike,
   type TModelLike,
   privatePropertyMetadata,
-  privatePropertySettings,
+  privatePropertyOptions,
   privateShallowCopyWithName,
   privateValidate,
   mergeEnum,
   Model,
   BaseModel,
   BaseRangeModel,
-  PipeModel,
   NoneModel,
   RawModel,
   CustomModel,
@@ -73,21 +76,17 @@ export {
   ArrModel,
   TupleModel,
   UnionModel,
-  RootFactory,
+  PipeModel,
+  BaseFactory,
   Factory
 } from './models.js'
 export {
-  mergeBoolOrNumOptions,
-  BoolOrNumOptions
+  Options
 } from './options.js'
 export {
   Re,
   RegExpCache
 } from './re.js'
-export {
-  Settings,
-  DefaultSettings
-} from './settings.js'
 export {
   type TStackNode,
   SafeStack,
@@ -113,10 +112,8 @@ export {
   type TResult,
   type TCustomResult,
   type TCustomValidate,
-  type TConfigOptions,
-  type TValidateOptions,
   type TOptions,
-  type TValidateSettings
+  type TModelOptions
 } from './types.js'
 export {
   isUndefined,
@@ -134,9 +131,10 @@ export {
   hasOwn,
   copyRegExp,
   plainCopy,
+  mergeBoolOrIntProperties,
   shallowEquals,
   objInArray,
   propertyNameToString,
   propertyPathToString,
-  valueToString
+  safeToJson
 } from './utils.js'

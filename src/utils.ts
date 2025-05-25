@@ -132,14 +132,14 @@ function plainCopy<T> (value: T): T {
       target = []
       cache.set(val, target)
       for (const item of val) {
-        target.push(plainCopy(item))
+        target.push(recursive(item))
       }
     }
     else {
       target = {} as any
       cache.set(val, target)
       for (const [key, v] of Object.entries(val)) {
-        target[key] = v
+        target[key] = recursive(v)
       }
     }
     return target
@@ -148,9 +148,27 @@ function plainCopy<T> (value: T): T {
 }
 
 /**
+ * Сливает только `boolean` и `number` свойства, которые есть у обоих объектов.
+ *
+ * @param target Целевой объект на который копируются свойства.
+ * @param source Источник.
+ */
+function mergeBoolOrIntProperties<T extends Record<string, boolean | number>> (target: T, source: { [_ in keyof T]?: undefined | null | boolean | number }): T {
+  for (const key of Object.keys(target)) {
+    if (hasOwn(source, key) && (isBoolean(source[key]) || isIntNonnegative(source[key]))) {
+      (target as any)[key] = source[key]
+    }
+  }
+  return target
+}
+
+/**
  * Поверхностное равенство ключей и значений двух объектов.
  */
 function shallowEquals (obj1: object, obj2: object): boolean {
+  if (obj1 === obj2) {
+    return true
+  }
   const keys1 = Object.keys(obj1)
   const keys2 = Object.keys(obj2)
   if (keys1.length !== keys2.length) {
@@ -208,8 +226,11 @@ function propertyPathToString (propertyPath: TPropertyName[]): string {
 /**
  * Приводит `value` к Json или возвращает специальное значение {@link TUnknownValue}.
  */
-function valueToString (value: any): string {
+function safeToJson (value: any): string {
   try {
+    if (isString(value)) {
+      return value
+    }
     return JSON.stringify(value)
   } catch (_) {
     return unknownValue
@@ -232,9 +253,10 @@ export {
   hasOwn,
   copyRegExp,
   plainCopy,
+  mergeBoolOrIntProperties,
   shallowEquals,
   objInArray,
   propertyNameToString,
   propertyPathToString,
-  valueToString
+  safeToJson
 }

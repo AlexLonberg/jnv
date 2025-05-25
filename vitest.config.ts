@@ -13,7 +13,7 @@ export default defineConfig({
       enabled: true,
       provider: 'playwright',
       // viewport: { height: 100, width: 100 },
-      // headless: true
+      // headless: true,
       instances: [{ browser: 'chromium' }]
     },
     coverage: {
@@ -30,20 +30,3 @@ export default defineConfig({
     }
   }
 })
-
-// // Конфигурация для тестирования в NodeJS
-// export default defineConfig({
-//   test: {
-//     include: [
-//       'src/**/*.test.ts'
-//     ],
-//     // https://vitest.dev/guide/coverage.html
-//     coverage: {
-//       enabled: true,
-//       // Без этой опции использует корень проекта.
-//       include: ['src/**/*.ts'],
-//       provider: 'v8',
-//       reportsDirectory: '.temp/coverage'
-//     },
-//   }
-// })

@@ -17,7 +17,7 @@ class SafeStack<T> {
    *
    * @param value Любое значение.
    */
-  push (value: T): TRelease {
+  enter (value: T): TRelease {
     const node: TStackNode<T> = { value, prev: this.prev }
     this.prev = node
     return (() => {
@@ -37,6 +37,9 @@ class SafeStack<T> {
     })
   }
 
+  /**
+   * Самое последнее значение зарегистрированное в {@link enter()}.
+   */
   top (): null | T {
     return this.prev ? this.prev.value : null
   }
@@ -54,6 +57,10 @@ class SafeStack<T> {
 
   isEmpty (): boolean {
     return this.prev === null
+  }
+
+  isAny (): boolean {
+    return this.prev !== null
   }
 }
 

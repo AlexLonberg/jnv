@@ -7,14 +7,14 @@
 
 * [Factory](./src/models.ts) - Фабрика типов.
 * [Config](./src/config.ts) - Базовые настройки для всех создаваемых типов.
-* [Settings](./src/settings.ts) - Локальные настройки типа.
+* [Options](./src/options.ts) - Локальные настройки типа.
 * [Metadata](./src/metadata.ts) - Контейнер хранения информации о типе.
-* [*Model](./src/models.ts) - Обертки над типами с привязкой к свойствам объектов `{config, settings, meta, key}`.
+* [*Model](./src/models.ts) - Обертки над типами с привязкой к свойствам объектов `{config, options, meta, key}`.
 * [Context](./src/context.ts) - Временный класс для отслеживания параметров текущей ветки(свойства объекта) при валидации значений, а также регистрации ошибок.
 
 ### Устройство *Model
 
-Классы моделей `*Model` представляют из себя легкие обертки, имеющие только ссылки на `Config/Settings/Metadata` и привязку к имени свойства объекта `key`(если она есть). Изменение любой настройки(`Settings/Metadata`) не меняет инстанс, а лишь вызывает копирование измененного параметра и оборачивание в новый экземпляр.
+Классы моделей `*Model` представляют из себя легкие обертки, имеющие только ссылки на `Config/Options/Metadata` и привязку к имени свойства объекта `key`(если она есть). Изменение любой настройки(`Options/Metadata`) не меняет инстанс, а лишь вызывает копирование измененного параметра и оборачивание в новый экземпляр.
 
 В этом примере все три внутренних свойства ссылаются на одни параметры типа(за исключением `box`), но обертки привязаны к разным ключам:
 
@@ -23,7 +23,7 @@ const numModel = v.num() // NumModel.key === null
 const objModel = v.obj({
   foo: numModel, // key === 'foo'
   bar: numModel, // key === 'bar'
-  box: numModel.stopError()  // key === 'box' and Settings.copy({stopIfError: true})
+  box: numModel.stopError()  // key === 'box' and Options.copy({stopIfError: true})
 })
 ```
 
@@ -67,19 +67,19 @@ if (hasOwn(value, key)) {
 
 ### Расширение типов и ограничения
 
-Как видно из описания выше: модели, привязываясь к свойствам или изменяя параметры, копируют ссылки на внутренние параметры(`Config/Settings/Metadata`) и вызывают конструкторы со строго определенным списком параметров `constructor(config, settings, meta, key)`. Из чего следует: расширяемые классы не могут иметь собственных конструкторов и свойств.
+Как видно из описания выше: модели, привязываясь к свойствам или изменяя параметры, копируют ссылки на внутренние параметры(`Config/Options/Metadata`) и вызывают конструкторы со строго определенным списком параметров `constructor(config, options, meta, key)`. Из чего следует: расширяемые классы не могут иметь собственных конструкторов и свойств.
 
 Добавление пользовательского типа к API Factory предполагает:
 
 * Расширение базового класса `Model/BaseModel/BaseRangeModel`, чаще всего это `BaseModel`(у него есть минимальные `def()/optional()/stopError()`), и реализация единственного метода `protected _validate(ctx, value)`.
-* Добавление функции к фабрике моделей `RootFactory.myType(): MyType`.
+* Добавление функции к фабрике моделей `Factory.myType(): MyType`.
 
 Расширяемые классы, для хранения параметров типа, должны использовать базовые подтипы `Metadata`. Базовые подтипы `Metadata` покрывают все варианты хранения информации о Json-типе: литералы, min/max для чисел, список регулярных выражений для строк или список дочерних моделей.
 
-Если типу не нужны данные, можно и вовсе не использовать `Metadata`, а выбрать любой подходящий подтип. Например мы можем использовать `RegExp` не прибегая к кешу фабрики `RootFactory._regExpCache`:
+Если типу не нужны данные, можно и вовсе не использовать `Metadata`, а выбрать любой подходящий подтип. Например мы можем использовать `RegExp`:
 
 ```ts
-// Здесь мы укажем дженерик подтипа string
+// Здесь мы укажем дженерик подтипа string, который в TRes<string>
 class StrNumberModel extends BaseModel<string> {
   protected override _validate (ctx: Context, value: any): TRes<string> {
     if (isString(value) && /^[0-9]+$/.test(value)) {
@@ -93,9 +93,9 @@ class StrNumberModel extends BaseModel<string> {
 Тогда стандартная реализация фабричной функции может быть очень простой:
 
 ```ts
-import { RootFactory as _RootFactory, Factory as _Factory } from 'jnv'
+import { Factory } from 'jnv'
 
-class RootFactory extends _RootFactory {
+class MyFactory extends Factory {
   strNumber (): StrNumberModel {
     // Стандартный конструктор должен получить:
     // + ссылку на общую конфигурацию
@@ -108,65 +108,11 @@ class RootFactory extends _RootFactory {
 }
 ```
 
-Есть два варианта добавления фабричной функции:
-
-1. Добавить фабричный метод к `RootFactory` и обновить конструктор удалив ненужный `RegExpCache`.
-2. Добавить фабричный метод к `RootFactory` и обновить класс `Factory` - это позволяет расширять конфигурацию, но чаще всего избыточно, так как методы настроек(`stopError()/removeFaulty()`) доступны на экземплярах.
-
-Первый вариант был рассмотрен в [README.md](./README.md). Здесь не приводится пример `Factory` для обновленного `RootFactory`, но его можно увидеть в [index.test.ts](./src/index.test.ts) - все сводится к банальному копированию класса и замене `RootFactory` на пользовательский.
-
 > Несмотря на то что `jnv` предназначен для валидации `JsonLike` типов, модели могут возвратить любой тип и даже класс. Результат после валидации применяется к свойству и не модифицируется.
 
 Если модель должна хранить метаданные, не предусмотренные стандартными подтипами `Metadata`, можно расширить свой класс. Основная задача правильно реализовать функцию `Metadata.copy()`.
 
-```ts
-class MyMetadata<T> extends Metadata<T> {
-  myPropertyForMyType: T
-
-  override copy(): Metadata<T> {
-    const meta = new Metadata<any>(this._type)
-    // копируем стандартное тело этого метода
-    // ...
-    // и добавляем копирование собственного свойства
-    meta.myPropertyForMyType = copyMyProperty(this.myPropertyForMyType)
-  }
-}
-```
-
-Остается применить этот класс в функции фабрики и, если нужно, передать аргументы:
-
-```ts
-class RootFactory extends _RootFactory {
-  strNumber (args: any): StrNumberModel {
-    return new StrNumberModel(this._config, this._defaultSettings, new MyMetadata(args), null)
-  }
-}
-```
-
-Теперь обратится к метаданным можно из собственного класса и, при необходимости, создать функции модификации похожие на `min()/max()` и т.п.
-
-```ts
-class StrNumberModel extends BaseModel<string> {
-
-  // Добавляем любые методы модификации типа
-  myModifier(newValue: type): this {
-    // Обязательно проверяем не заморожен ли объект
-    if (this._meta.myPropertyForMyType === newValue || this._throwIfFrozen()) {
-      return this
-    }
-    const meta = this._meta.copy()
-    meta.myPropertyForMyType = newValue
-    // Передаем копию meta в функцию копирования текущего инстанса.
-    // config и settings передаются конструктору по ссылке, так как не модифицированы
-    return this._copyWith(null, null, meta)
-  }
-
-  protected override _validate (ctx: Context, value: any): TRes<string> {
-    const meta = this._meta as MyMetadata
-    // ...
-  }
-}
-```
+Пример расширения `Metadata` находится в этом тесте [Extending classes](./src/index.test.ts#152)
 
 ## Использование проекта с *.ts файлами без предварительной компиляции
 
