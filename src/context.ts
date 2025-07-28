@@ -28,8 +28,8 @@ import { objInArray, safeToJson } from './utils.js'
  * + Все функции `throw*()` вызываются валидаторами значений.
  */
 class Context {
-  protected readonly _errorDetails = new ErrorLikeCollection('errors')
-  protected readonly _warnDetails = new ErrorLikeCollection('warnings')
+  protected readonly _errorDetails = new ErrorLikeCollection<IErrorLike>('errors')
+  protected readonly _warnDetails = new ErrorLikeCollection<IErrorLike>('warnings')
   protected readonly _typeMatchingFlag = new SafeStack<null>()
   protected readonly _warningFlag = new SafeStack<null>()
   protected readonly _stopErrorFlag = new SafeStack<null>()

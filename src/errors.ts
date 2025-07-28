@@ -16,7 +16,10 @@ import {
   errorDetailToList,
   errorDetailToString,
   nativeErrorToString,
-  errorToString
+  errorToString,
+  errorDetailToJsonLike,
+  nativeErrorToJsonLike,
+  errorToJsonLike
 } from 'js-base-error'
 import { propertyNameToString } from './utils.js'
 
@@ -68,6 +71,7 @@ function ensureErrorLike<T extends IErrorLike> (maybeError: any): T {
  * Все нижеуказанные поля не являются обязательными и зависят от типа ошибки.
  */
 interface IErrorDetail extends IErrorDetail_<TErrorCode> {
+  code: TErrorCode
   /**
    * @experimental
    *
@@ -110,10 +114,13 @@ interface IErrorDetail extends IErrorDetail_<TErrorCode> {
 /**
  * Базовый интерфейс деталей ошибок.
  */
-interface IErrorLike extends IErrorLike_<TErrorCode>, IErrorDetail { }
+interface IErrorLike extends IErrorLike_<TErrorCode>, IErrorDetail {
+  code: TErrorCode
+}
 
 /**
- * Массив ошибок с методом автоматического преобразования `toString()` всех вложенных `IErrorLike` к строке.
+ * Массив ошибок с методом автоматического преобразования `toString()` всех вложенных {@link IErrorLike} к строке или
+ * `toJSON()` к объекту `{errors: Record<string, any>[]}`.
  */
 interface IErrorLikeCollection extends IErrorLikeCollection_<IErrorLike> { }
 
@@ -286,6 +293,9 @@ export {
   errorDetailToString,
   nativeErrorToString,
   errorToString,
+  errorDetailToJsonLike,
+  nativeErrorToJsonLike,
+  errorToJsonLike,
   //
   errorCodes,
   type TErrorCodes,

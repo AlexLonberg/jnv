@@ -36,6 +36,7 @@ import {
   errorClassByCode,
   createErrorLike,
   ensureErrorLike,
+  isErrorLike,
   JnvError,
   ConfigureError,
   ModelIsFrozenError
@@ -102,6 +103,16 @@ function mergeEnum (...values: TModelLiteralLike[]): { set: Set<JsonPrimitive>, 
     }
   }
   return { set: new Set(set), faultyValues: faultyValues.size > 0 ? faultyValues : null }
+}
+
+function _ensureCustomError (error: any): IErrorLike {
+  if (isErrorLike(error)) {
+    return error as IErrorLike
+  }
+  if (error instanceof JnvError) {
+    return error.detail
+  }
+  return ensureErrorLike(error)
 }
 
 /**
@@ -576,12 +587,12 @@ class CustomModel<T extends JsonLike> extends BaseModel<T> {
     const warning: undefined | null | ELike | ELike[] = (result as any).warning
     if (warning) {
       if (isArray(warning)) {
-        for (const item of warning) {
-          ctx.addWarning(item)
+        for (const item of warning as ELike[]) {
+          ctx.addWarning(_ensureCustomError(item))
         }
       }
       else {
-        ctx.addWarning(warning)
+        ctx.addWarning(_ensureCustomError(warning))
       }
     }
     if (error) {
