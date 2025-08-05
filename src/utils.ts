@@ -37,14 +37,14 @@ function isNumber (value: any): value is number {
  * Является ли аргумент `value` целым числом.
  */
 function isInt (value: any): value is number {
-  return Number.isInteger(value)
+  return Number.isSafeInteger(value)
 }
 
 /**
  * Является ли аргумент `value` целым неотрицательным числом.
  */
 function isIntNonnegative (value: any): value is number {
-  return Number.isInteger(value) && value >= 0
+  return Number.isSafeInteger(value) && value >= 0
 }
 
 /**

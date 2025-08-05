@@ -613,7 +613,7 @@ class BoolModel extends BaseModel<boolean> {
 
 class NumModel extends BaseRangeModel<number> {
   /**
-   * Допускать только {@link Number.isInteger()} значения.
+   * Допускать только {@link Number.isSafeInteger()} значения.
    */
   int (): NumModel {
     if (this._meta.expectedType) {
