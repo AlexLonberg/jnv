@@ -6,14 +6,14 @@
   },
   "search.exclude": {
     // "**/_*": true,
-    // "**/.git": true,
-    // "**/node_modules": true,
-    // ".temp/": true,
-    // "dist/": true,
+    "**/.git": true,
+    "**/node_modules": true,
+    ".temp/": true,
+    "dist/": true,
     // "**/*.json": true,
     // "eslint.config.js": true,
     // "vitest.config.ts": true,
-    // "LICENSE.md": true,
+    "LICENSE.md": true
   },
   "googleSearchContextMenu.items": {
     "MDNWeb": {
