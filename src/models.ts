@@ -1,13 +1,20 @@
+import {
+  ErrorLikeCollection,
+  createErrorLike,
+  isErrorLike,
+  nativeErrorToJsonLike
+} from 'js-base-error'
 import type {
   JsonPrimitive,
   JsonObject,
   JsonArray,
   JsonLike,
+  TEmptyValue,
   TRes,
-  TPropertyName,
   TResult,
   TCustomResult,
   TCustomValidate,
+  TPropertyName,
   TOptions
 } from './types.js'
 import {
@@ -29,17 +36,13 @@ import {
 import {
   type IErrorDetail,
   type IErrorLike,
-  ErrorLikeCollection,
-  errorCodes,
   errorDetails,
-  errorNameByCode,
-  errorClassByCode,
-  createErrorLike,
-  ensureErrorLike,
-  isErrorLike,
+  errorClassByName,
+  isErrorName,
   JnvError,
   ConfigureError,
-  ModelIsFrozenError
+  ModelIsFrozenError,
+  CombinedError
 } from './errors.js'
 import { type Re, RegExpCache } from './re.js'
 import { Config } from './config.js'
@@ -83,7 +86,7 @@ function privateValidate<T extends Model<any>> (model: T, ctx: Context, value: a
 /**
  * Сливает уникальные значения из литералов и {@link EnumModel} типов.
  */
-function mergeEnum (...values: TModelLiteralLike[]): { set: Set<JsonPrimitive>, faultyValues: Set<any> | null } {
+function mergeEnum (...values: TModelLiteralLike[]): { set: ReadonlySet<JsonPrimitive>, faultyValues: Set<any> | null } {
   const faultyValues = new Set()
   const set: JsonPrimitive[] = []
   for (const item of values) {
@@ -92,7 +95,7 @@ function mergeEnum (...values: TModelLiteralLike[]): { set: Set<JsonPrimitive>, 
       set.push(meta.expectedType)
     }
     else if (item instanceof EnumModel) {
-      const meta = privatePropertyMetadata<Set<JsonPrimitive>>(item)
+      const meta = privatePropertyMetadata<ReadonlySet<JsonPrimitive>>(item)
       set.push(...meta.expectedType.values())
     }
     else if (isJsonPrimitive(item)) {
@@ -105,14 +108,38 @@ function mergeEnum (...values: TModelLiteralLike[]): { set: Set<JsonPrimitive>, 
   return { set: new Set(set), faultyValues: faultyValues.size > 0 ? faultyValues : null }
 }
 
-function _ensureCustomError (error: any): IErrorLike {
-  if (isErrorLike(error)) {
-    return error as IErrorLike
-  }
+function _ensureErrorLike (error: any): IErrorLike {
   if (error instanceof JnvError) {
-    return error.detail
+    error = error.detail
   }
-  return ensureErrorLike(error)
+  else if (error instanceof Error) {
+    error = nativeErrorToJsonLike(error)
+  }
+  else if (!isErrorLike(error)) {
+    error = createErrorLike(error)
+  }
+  try {
+    if (!hasOwn(error, 'name')) {
+      Object.defineProperty(error, 'name', {
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value: 'Jnv.UnknownError'
+      })
+    }
+    else if (!isErrorName(error.name)) {
+      if (isString(error.name)) {
+        error = {
+          name: 'Jnv.UnknownError',
+          cause: error
+        }
+      }
+      else {
+        error.name = 'Jnv.UnknownError'
+      }
+    }
+  } catch (_) { /**/ }
+  return isErrorLike(error) ? error as IErrorLike : createErrorLike(error)
 }
 
 /**
@@ -151,20 +178,19 @@ abstract class Model<T extends JsonLike> {
 
   /**
    * Возвращает все ошибки произошедшие в процессе конфигурирования текущего типа и дочерних элементов.
-   * Список будет находится в {@link IErrorLike.errors}.
+   *
+   * Список будет находится в {@link IErrorDetail.errors}.
    */
-  getConfigureError (): null | IErrorLike {
+  getConfigureError (): null | CombinedError {
     const errors: IErrorLike[] = []
     this._collectConfigureError([], errors)
     if (errors.length === 0) {
       return null
     }
-    return createErrorLike<IErrorLike>({
-      code: errorCodes.ConfigureError,
-      name: errorNameByCode(errorCodes.ConfigureError),
-      level: 'error',
+    return new CombinedError(createErrorLike<IErrorLike>({
+      name: 'Jnv.CombinedError',
       errors: new ErrorLikeCollection('errors', errors)
-    })
+    }))
   }
 
   /**
@@ -190,7 +216,8 @@ abstract class Model<T extends JsonLike> {
   }
 
   /**
-   * Если включена опция throwIfConfigureError, поднимает ошибку, иначе копирует модель и добавляет ошибку.
+   * Если включена опция {@link TOptions.throwIfConfigureError}, поднимает ошибку, иначе копирует модель и добавляет
+   * ошибку {@link Metadata}.
    */
   protected _throwIfConfigureError (message?: string): this {
     const detail = errorDetails.ConfigureError(this._key, message)
@@ -198,6 +225,7 @@ abstract class Model<T extends JsonLike> {
       throw new ConfigureError(detail)
     }
     const copy = this.copy()
+    // При копировании не переносятся заморозка и свойство имени - делаем это явно.
     if (this.isFrozen()) {
       copy.freeze(this.name)
     }
@@ -208,8 +236,8 @@ abstract class Model<T extends JsonLike> {
   /**
    * Проверяет заморожена ли модель, и, в случае заморозки:
    *
+   *   + поднимает ошибку при включенном параметре {@link TOptions.throwIfConfigureError}
    *   + копирует модель
-   *   + поднимает ошибку при включенном параметре throwIfConfigureError
    *   + регистрирует ошибку в метаданные
    *   + возвращает замороженную копию, если выброс ошибок отключен
    */
@@ -254,7 +282,8 @@ abstract class Model<T extends JsonLike> {
   }
 
   /**
-   * Возвращает копию с удаленным флагом {@link Model.isFrozen()}.
+   * Возвращает копию с удаленным флагом {@link Model.isFrozen()} и именем {@link Model.name}.
+   *
    * Если модель не заморожена, возвратит `this`.
    */
   unfreeze (): this {
@@ -267,35 +296,40 @@ abstract class Model<T extends JsonLike> {
 
   /**
    * Этот метод ничего не делает и лишь возвращает тип {@link Model} с предпочитаемым типом.
+   *
    * Используйте это метод когда невозможно вывести тип для результата преобразования.
    */
   typeGuard<Target extends JsonLike> (): Model<Target> {
     return this as unknown as Model<Target>
   }
 
+  /**
+   * Вызывается после валидации(если ошибка поймана в `catch`) и определяет: нужно ли возвратить результат с ошибкой или
+   * бросить исключение.
+   */
   protected _validateHandleError<Target extends JsonLike> (ctx: Context, e: any): TResult<Target> {
-    let isJnvError = false
-    let errorLike!: IErrorLike
+    let error!: JnvError
     if (e instanceof JnvError) {
-      isJnvError = true
-      errorLike = e.detail
+      error = e
     }
     else {
-      errorLike = ensureErrorLike(e)
+      const errorLike = _ensureErrorLike(e)
+      const cls = errorClassByName(errorLike.name)
+      error = new cls(errorLike)
     }
-    ctx.attachErrors(errorLike)
-    if (!ctx.isThrowEnabled()) {
-      return { ok: false, value: null, error: errorLike }
+    ctx.attachErrors(error.detail)
+    if (ctx.isThrowEnabled()) {
+      throw error
     }
-    if (isJnvError) {
-      throw e
-    }
-    const cls = errorClassByCode(errorLike.code)
-    throw new cls(errorLike)
+    return { ok: false, value: null, error }
   }
 
   /**
    * Валидирует/трансформирует целевое значение.
+   *
+   * **Note:** Любая ошибка гарантировано возвращается в допустимом {@link JnvError}. Пользовательские валидаторы или
+   * кастомные функции, могут бросить собственное исключение унаследованное от `JnvError`. Если ошибка не является
+   * подтипом `JnvError`, последняя будет явно трансформирована к допустимому типу.
    *
    * @param value Исходное значение.
    */
@@ -317,13 +351,18 @@ abstract class Model<T extends JsonLike> {
     }
   }
 
+  /**
+   * Внутренний метод валидации, который должен бытьреализован наследниками.
+   *
+   * @param ctx   Контекст.
+   * @param value Проверяемоме значение. Это может быть как корневой объект, так и любой вложенный тип: свойство или элемент массива.
+   */
   protected abstract _validate (ctx: Context, value: any): TRes<T>
 
   /**
    * Возвращает копию типа и сбрасывает флаг установленный методом {@link freeze()} для новой копии.
    *
-   * Этот метод не имеет никакого полезного эффекта, кроме явного копирования внутренних свойств, и может применяться
-   * при необходимости получить модель в новом контейнере.
+   * Этот метод не имеет никакого полезного эффекта, кроме явного копирования внутренних свойств.
    */
   copy (): this {
     return this._copyWith(this._options.extend(), this._meta.copy())
@@ -331,9 +370,12 @@ abstract class Model<T extends JsonLike> {
 
   /**
    * Копирование только с явно установленными типами параметров.
-   * Для изменения параметров meta, вызываем _copyWith(null, meta.copy(...)), и т.п.
+   *
+   *  + Для изменения параметров meta, вызываем _copyWith(null, this._meta.copy(...)).
+   *  + Для изменения опций _copyWith(this._options.extend(), null).
+   *  + ... или все вместе.
    */
-  protected _copyWith (options: null | Options<T>, meta: null | Metadata<T>): this {
+  protected _copyWith (options: null | Options<T>, meta: null | Metadata<(typeof this._meta) extends Metadata<infer V> ? V : never>): this {
     return new (this.constructor as (new (...args: any[]) => this))(
       this._config, options ?? this._options, meta ?? this._meta, this._key
     )
@@ -348,14 +390,16 @@ abstract class Model<T extends JsonLike> {
   }
 
   /**
-   * Создает цепочку валидаторов, которая одновременно может преобразовать объект.
+   * Создает цепочку валидаторов.
    *
-   * Каждый следующий валидатор получает значение предыдущего, только в случае успеха валидации.
+   * Каждый следующий валидатор получает значение предыдущего, и только в случае успеха валидации.
+   *
+   * **Note:** Валидаторы должны возвращать ожидаемый тип {@link TResult} или поднимать ошибки.
    */
   pipe<Target extends JsonLike = T> (...models: [...Model<JsonLike>[], Model<Target>]): PipeModel<Target> {
-    const validators: Model<any>[] = [privateShallowCopyWithName(this, null)]
+    const validators: Model<any>[] = [this[SHALLOW_COPY](null)]
     for (const item of models) {
-      validators.push(privateShallowCopyWithName(item, null))
+      validators.push(item[SHALLOW_COPY](null))
     }
     const meta = Metadata.pipe(validators)
     return new PipeModel<Target>(this._config, this._options as Options<any>, meta, this._key)
@@ -365,8 +409,8 @@ abstract class Model<T extends JsonLike> {
 abstract class BaseModel<T extends JsonLike> extends Model<T> {
   /**
    * Остановить распространение ошибки для этой модели и установить значение по умолчанию или `null`.
-   * Эта опция позволяет не вызывать ошибок во вложенных узлах моделей.
    *
+   * Эта опция позволяет не вызывать ошибок во вложенных узлах моделей.
    * Результат будет содержать предупреждения о замене.
    */
   stopError (): this {
@@ -383,7 +427,7 @@ abstract class BaseModel<T extends JsonLike> extends Model<T> {
   /**
    * Установить/заменить значение по умолчанию.
    *
-   * @param defaultValue Любое значение. Обратите внимание: Это значение может быть любым, а не только {@link JsonLike}.
+   * @param defaultValue Любое значение. Обратите внимание: Значение может быть любым типом, а не только {@link JsonLike}.
    */
   def (defaultValue: null | any): this {
     if (this._options.isEqualDefaultValue(defaultValue)) {
@@ -399,7 +443,7 @@ abstract class BaseModel<T extends JsonLike> extends Model<T> {
   /**
    * Установить флаг необязательного свойства.
    *
-   * @param defaultValue Необязательное значение по умолчанию для отсутствующего свойства.
+   * @param defaultValue Необязательное значение по умолчанию для отсутствующего свойства. `undefined` игнорируется.
    */
   optional (defaultValue?: undefined | null | T): this {
     const isUndef = isUndefined(defaultValue)
@@ -417,11 +461,11 @@ abstract class BaseModel<T extends JsonLike> extends Model<T> {
 
 abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
   /**
-   * Устанавливает минимальное значение 1:
+   * Устанавливает минимальное значение 1. Этот метод вызывается для:
    *
-   * + Для числа(num) это positive()
-   * + Для строки(str/re) nonempty()
-   * + Для массива(arr) nonempty()
+   *  + Для числа(num) это positive(), так же будет установлено `meta.expectedType = true`
+   *  + Для строки(str/re) nonempty()
+   *  + Для массива(arr) nonempty()
    */
   protected _setIntAndMin1 (): this {
     if (this._meta.min === 1 && this._meta.max === null && this._meta.exclusive === false && (this._meta.type !== 'num' || this._meta.expectedType)) {
@@ -442,8 +486,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
   }
 
   /**
-   * Установить Metadata.min/exclusive
-   * Для строк и массивов проверяется минимальное, которое не должно быть < 0.
+   * Установить Metadata.min/exclusive. Для строк и массивов проверяется минимальное, которое не должно быть < 0.
    */
   protected _setMin (min: number, exclusive?: undefined | null | boolean): this {
     const excl = isBoolean(exclusive) ? exclusive : this._meta.exclusive
@@ -467,8 +510,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
   }
 
   /**
-   * Установить Metadata.max/exclusive
-   * Для строк и массивов проверяется max, которое не должно быть < 0.
+   * Установить Metadata.max/exclusive. Для строк и массивов проверяется max, которое не должно быть < 0.
    */
   protected _setMax (max: number, exclusive?: undefined | null | boolean): this {
     const excl = isBoolean(exclusive) ? exclusive : this._meta.exclusive
@@ -492,8 +534,7 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
   }
 
   /**
-   * Допустимый диапазон Metadata.min/max.
-   * Для str/re и arr проверяется минимальное, которое не должно быть < 0.
+   * Допустимый диапазон Metadata.min/max. Для str/re и arr проверяется минимальное, которое не должно быть < 0.
    */
   protected _setRange (min: number, max: number, exclusive?: undefined | null | boolean): this {
     const excl = isBoolean(exclusive) ? exclusive : this._meta.exclusive
@@ -515,10 +556,11 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
   }
 
   /**
-   * Проверяет диапазон для установленных min/max. Для строк и массивов следует передать длину.
-   * + 0 - Проверка успешна или не нужна.
-   * + 1 - Ошибка min
-   * + 2 - Ошибка max
+   * Проверяет диапазон для установленных min/max. Для строк и массивов следует передать длину. Возвращает:
+   *
+   *  + 0 - Проверка успешна или не нужна.
+   *  + 1 - Ошибка min
+   *  + 2 - Ошибка max
    */
   protected _checkMinMax (value: number): 0 | 1 | 2 {
     if (this._meta.min !== null) {
@@ -567,51 +609,62 @@ abstract class BaseRangeModel<T extends JsonLike> extends BaseModel<T> {
 }
 
 class NoneModel extends BaseModel<any> {
+  declare readonly _meta: Metadata<TEmptyValue>
+
   protected override _validate (ctx: Context, value: any): TRes<any> {
     return ctx.throwNotConfiguredError(value)
   }
 }
 
 class RawModel extends BaseModel<JsonLike> {
+  declare readonly _meta: Metadata<TEmptyValue>
+
   protected override _validate (_ctx: Context, value: any): TRes<JsonLike> {
     return { ok: true, value }
   }
 }
 
 class CustomModel<T extends JsonLike> extends BaseModel<T> {
+  declare readonly _meta: Metadata<TCustomValidate<T>>
+
   protected override _validate (ctx: Context, value: any): TRes<T> {
     type ELike = JnvError | IErrorLike | IErrorDetail
-    const result = (this._meta as unknown as Metadata<TCustomValidate<T>>).expectedType(ctx.getPath(), value)
+    const result: TResult<any> | TCustomResult<any> = this._meta.expectedType(ctx.getPath(), value)
     let ok = !!result.ok
     let error: undefined | null | ELike = (result as any).error
     const warning: undefined | null | ELike | ELike[] = (result as any).warning
     if (warning) {
       if (isArray(warning)) {
-        for (const item of warning as ELike[]) {
-          ctx.addWarning(_ensureCustomError(item))
+        for (const item of warning) {
+          ctx.addWarning(_ensureErrorLike(item))
         }
       }
       else {
-        ctx.addWarning(_ensureCustomError(warning))
+        ctx.addWarning(_ensureErrorLike(warning))
       }
     }
     if (error) {
       ok = false
+      error = _ensureErrorLike(error)
     }
     else if (!ok) {
       error = errorDetails.FaultyValueError(ctx.getPathAsStr(), safeToJson(result.value), "Пользовательский 'CustomModel' не вернул причину ошибки.")
     }
-    return ok ? { ok, value: result.value! } : ctx.throwCustomError(error!)
+    return ok ? { ok, value: result.value! } : ctx.throwCustomError(error as IErrorLike)
   }
 }
 
 class BoolModel extends BaseModel<boolean> {
+  declare readonly _meta: Metadata<TEmptyValue>
+
   protected override _validate (ctx: Context, value: any): TRes<boolean> {
     return isBoolean(value) ? { ok: true, value } : ctx.throwFaultyValueError(value, 'Ожидался type boolean.')
   }
 }
 
 class NumModel extends BaseRangeModel<number> {
+  declare readonly _meta: Metadata<boolean>
+
   /**
    * Допускать только {@link Number.isSafeInteger()} значения.
    */
@@ -630,6 +683,7 @@ class NumModel extends BaseRangeModel<number> {
 
   /**
    * Установить флаги {@link NumModel.int()} и {@link NumModel.min()}.
+   *
    * Используйте этот тип для `id > 0`.
    */
   positive (): NumModel {
@@ -640,11 +694,11 @@ class NumModel extends BaseRangeModel<number> {
     if (this._meta.expectedType ? !isInt(value) : !isNumber(value)) {
       return ctx.throwFaultyValueError(value, `Ожидался type number${this._meta.expectedType ? '(int)' : ''}.`)
     }
-    const result = this._checkMinMax(value)
-    if (result === 1) {
+    const cause = this._checkMinMax(value)
+    if (cause === 1) {
       return ctx.throwFaultyValueError(value, `Недопустимый диапазон 'min:${this._meta.min} ${this._meta.exclusive ? '<' : '<='} value:${safeToJson(value)}'.`)
     }
-    if (result === 2) {
+    if (cause === 2) {
       return ctx.throwFaultyValueError(value, `Недопустимый диапазон 'value:${safeToJson(value)} ${this._meta.exclusive ? '<' : '<='} max:${this._meta.max}'.`)
     }
     return { ok: true, value }
@@ -652,6 +706,8 @@ class NumModel extends BaseRangeModel<number> {
 }
 
 class StrModel extends BaseRangeModel<string> {
+  declare readonly _meta: Metadata<TEmptyValue | (readonly Re[])>
+
   /**
    * Непустая строка.
    */
@@ -663,18 +719,18 @@ class StrModel extends BaseRangeModel<string> {
     if (!isString(value)) {
       return ctx.throwFaultyValueError(value, 'Ожидался type string.')
     }
-    const result = this._checkMinMax(value.length)
-    if (result === 1) {
+    const cause = this._checkMinMax(value.length)
+    if (cause === 1) {
       return ctx.throwFaultyValueError(value, `Количество символов строки не соответствует ожидаемому 'min:${this._meta.min}'.`)
     }
-    if (result === 2) {
+    if (cause === 2) {
       return ctx.throwFaultyValueError(value, `Количество символов строки не соответствует ожидаемому 'max:${this._meta.max}'.`)
     }
-    const meta = (this._meta as Metadata<Re[]>)
+    const meta = this._meta
     if (!meta.hasExpectedType()) {
       return { ok: true, value }
     }
-    for (const re of meta.expectedType) {
+    for (const re of meta.expectedType as (readonly Re[])) {
       if (re.test(value)) {
         return { ok: true, value }
       }
@@ -684,8 +740,10 @@ class StrModel extends BaseRangeModel<string> {
 }
 
 class LiteralModel<T extends JsonPrimitive> extends BaseModel<T> {
+  declare readonly _meta: Metadata<JsonPrimitive>
+
   protected override _validate (ctx: Context, value: any): TRes<T> {
-    const expected = (this._meta as Metadata<JsonPrimitive>).expectedType
+    const expected = this._meta.expectedType
     return expected === value
       ? { ok: true, value }
       : ctx.throwFaultyValueError(value, `Ожидалось значение 'literal(${safeToJson(expected)})'.`)
@@ -693,11 +751,13 @@ class LiteralModel<T extends JsonPrimitive> extends BaseModel<T> {
 }
 
 class EnumModel<T extends JsonPrimitive> extends BaseModel<T> {
+  declare readonly _meta: Metadata<ReadonlySet<JsonPrimitive>>
+
   protected override _validate (ctx: Context, value: any): TRes<T> {
-    const expected = (this._meta as Metadata<Set<JsonPrimitive>>).expectedType
+    const expected = this._meta.expectedType
     return expected.has(value)
       ? { ok: true, value }
-      : ctx.throwFaultyValueError(value, `Ожидалось одно из допустимых значений 'enum(${[...expected].map((v) => safeToJson(v)).join(', ')})'`)
+      : ctx.throwFaultyValueError(value, `Ожидалось одно из допустимых значений 'enum(${safeToJson([...expected])})'`)
   }
 }
 
@@ -707,13 +767,13 @@ class ObjModel<T extends JsonObject> extends BaseModel<T> {
   /**
    * Возвращает структуру в виде простого объекта, к ключам которой привязаны модели.
    *
-   * Этот метод отвязывает ключи моделей от свойств, то есть все они будут Model.key === null.
+   * Этот метод отвязывает ключи моделей от свойств - то есть все они будут `Model.key === null`.
    */
   decompose (): Record<string, Model<any>> {
     const obj = {} as any
     const expectedType = this._meta.expectedType
     for (const model of expectedType) {
-      obj[model.key as string] = privateShallowCopyWithName(model, null)
+      obj[model.key as string] = model[SHALLOW_COPY](null)
     }
     return obj
   }
@@ -727,11 +787,11 @@ class ObjModel<T extends JsonObject> extends BaseModel<T> {
     const expectedType = this._meta.expectedType
     for (const model of expectedType) {
       const key = model.key as string
-      const options = privatePropertyOptions(model)
+      const options = model[PROP_OPTIONS]()
       const releaseKey = ctx.enterKey(key)
       try {
         if (hasOwn(value, key)) {
-          const { ok, value: v } = privateValidate(model, ctx, value[key])
+          const { ok, value: v } = model[VALIDATE](ctx, value[key])
           if (!ok) {
             return ctx.throwFaultyValueError(value[key], `Неудачная валидация свойства '${key}' объекта.`)
           }
@@ -754,6 +814,8 @@ class ObjModel<T extends JsonObject> extends BaseModel<T> {
 }
 
 class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
+  declare readonly _meta: Metadata<null | UnionModel<T>>
+
   /**
    * Непустой массив.
    */
@@ -780,7 +842,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
       const item = values[i]
       const release = ctx.enterKey(i)
       try {
-        const { ok, value } = privateValidate(expectedType, ctx, item)
+        const { ok, value } = expectedType[VALIDATE](ctx, item)
         if (ok) {
           values[i] = value
         }
@@ -800,7 +862,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
       const item = values[i]
       const release = ctx.enterKey(i)
       try {
-        const { ok, value } = privateValidate(expectedType, ctx, item)
+        const { ok, value } = expectedType[VALIDATE](ctx, item)
         if (ok) {
           newValues.push(value)
         }
@@ -821,7 +883,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
         const item = values[i]
         const releaseKey = ctx.enterKey(i)
         try {
-          const { ok, value } = privateValidate(expectedType, ctx, item)
+          const { ok, value } = expectedType[VALIDATE](ctx, item)
           if (ok) {
             values[i] = value
           }
@@ -836,11 +898,11 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     } finally {
       release()
     }
-    const resultPost = this._checkMinMax(values.length)
-    if (resultPost === 1) {
+    const cause = this._checkMinMax(values.length)
+    if (cause === 1) {
       return ctx.throwFaultyValueError(values, `Количество элементов массива не соответствует ожидаемому 'min:${this._meta.min}, value.length:${values.length}'.`)
     }
-    if (resultPost === 2) {
+    if (cause === 2) {
       return ctx.throwFaultyValueError(values, `Количество элементов массива не соответствует ожидаемому 'max:${this._meta.max}, value.length:${values.length}'.`)
     }
     return { ok: true, value: values as T }
@@ -854,7 +916,7 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
         const item = values[i]
         const releaseKey = ctx.enterKey(i)
         try {
-          const { ok, value } = privateValidate(expectedType, ctx, item)
+          const { ok, value } = expectedType[VALIDATE](ctx, item)
           if (ok) {
             newValues.push(value)
           }
@@ -868,11 +930,11 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
     } finally {
       release()
     }
-    const resultPost = this._checkMinMax(newValues.length)
-    if (resultPost === 1) {
+    const cause = this._checkMinMax(newValues.length)
+    if (cause === 1) {
       return ctx.throwFaultyValueError(newValues, `Количество элементов массива не соответствует ожидаемому 'min:${this._meta.min}, value.length:${newValues.length}'.`)
     }
-    if (resultPost === 2) {
+    if (cause === 2) {
       return ctx.throwFaultyValueError(newValues, `Количество элементов массива не соответствует ожидаемому 'max:${this._meta.max}, value.length:${newValues.length}'.`)
     }
     return { ok: true, value: newValues as T }
@@ -883,15 +945,15 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
       return ctx.throwFaultyValueError(value, 'Ожидался Array.')
     }
 
-    const result = this._checkMinMax(value.length)
-    if (result === 1) {
+    const cause = this._checkMinMax(value.length)
+    if (cause === 1) {
       return ctx.throwFaultyValueError(value, `Количество элементов массива не соответствует ожидаемому 'min:${this._meta.min}, value.length:${value.length}'.`)
     }
-    if (result === 2) {
+    if (cause === 2) {
       return ctx.throwFaultyValueError(value, `Количество элементов массива не соответствует ожидаемому 'max:${this._meta.max}, value.length:${value.length}'.`)
     }
 
-    const expectedType = (this._meta as Metadata<UnionModel<any> | null>).expectedType
+    const expectedType = this._meta.expectedType
     if (!expectedType) {
       return { ok: true, value }
     }
@@ -910,13 +972,15 @@ class ArrModel<T extends JsonArray> extends BaseRangeModel<T> {
 }
 
 class TupleModel<T extends JsonArray> extends BaseModel<T> {
+  declare readonly _meta: Metadata<Model<any>[]>
+
   protected _validateItemsModeRewrite (ctx: Context, value: any[], expectedType: Model<any>[]): TRes<T> {
     for (let i = 0; i < expectedType.length; ++i) {
       const item = value[i]
       const model = expectedType[i]!
       const releaseKey = ctx.enterKey(i)
       try {
-        const { ok, value: v } = privateValidate(model, ctx, item)
+        const { ok, value: v } = model[VALIDATE](ctx, item)
         if (ok) {
           value[i] = v
         }
@@ -937,7 +1001,7 @@ class TupleModel<T extends JsonArray> extends BaseModel<T> {
       const model = expectedType[i]!
       const releaseKey = ctx.enterKey(i)
       try {
-        const { ok, value: v } = privateValidate(model, ctx, item)
+        const { ok, value: v } = model[VALIDATE](ctx, item)
         if (ok) {
           newValues.push(v)
         }
@@ -956,7 +1020,7 @@ class TupleModel<T extends JsonArray> extends BaseModel<T> {
       return ctx.throwFaultyValueError(value, 'Ожидался Array(tuple).')
     }
 
-    const expectedType = (this._meta as Metadata<Model<any>[]>).expectedType
+    const expectedType = this._meta.expectedType
     if (expectedType.length !== value.length) {
       return ctx.throwFaultyValueError(value, `Количество требуемых элементов 'tuple.length:${expectedType.length}' не совпадает с полученным массивом 'value.length:${value.length}'.`)
     }
@@ -968,12 +1032,14 @@ class TupleModel<T extends JsonArray> extends BaseModel<T> {
 }
 
 class UnionModel<T extends JsonLike> extends BaseModel<T> {
+  declare readonly _meta: Metadata<readonly Model<T>[]>
+
   protected override _validate (ctx: Context, value: any): TRes<T> {
-    const expectedType = (this._meta as Metadata<Model<any>[]>).expectedType
+    const expectedType = this._meta.expectedType
     const release = ctx.enterTypeMatching()
     try {
       for (const model of expectedType) {
-        const { ok, value: v } = privateValidate(model, ctx, value)
+        const { ok, value: v } = model[VALIDATE](ctx, value)
         if (ok) {
           return { ok: true, value: v }
         }
@@ -986,10 +1052,12 @@ class UnionModel<T extends JsonLike> extends BaseModel<T> {
 }
 
 class PipeModel<T extends JsonLike> extends BaseModel<T> {
+  declare readonly _meta: Metadata<readonly Model<T>[]>
+
   protected override _validate (ctx: Context, value: any): TRes<any> {
-    const expectedType = this._meta.expectedType as Model<any>[]
+    const expectedType = this._meta.expectedType
     for (const item of expectedType) {
-      const { ok, value: v } = privateValidate(item, ctx, value)
+      const { ok, value: v } = item[VALIDATE](ctx, value)
       if (ok) {
         value = v
       }
@@ -1014,7 +1082,7 @@ class BaseFactory {
     this._defaultOptions = new Options(this._config.getModelOptions())
   }
 
-  protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: null | NoneModel): NoneModel
+  protected _addOrThrowConfigureError<_T extends Model<any>> (name: TPropertyName, message: string, model: null | NoneModel): NoneModel
   protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: T): T
   protected _addOrThrowConfigureError<T extends Model<any>> (name: TPropertyName, message: string, model: null | NoneModel | T): NoneModel | T {
     const detail = errorDetails.ConfigureError(name, message)

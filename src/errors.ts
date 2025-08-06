@@ -1,81 +1,65 @@
-import type { TPropertyName, TCustomValidate, TResult } from './types.js'
+import type {
+  TPropertyName,
+  TResult,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  TCustomValidate
+} from './types.js'
 import {
-  type TErrorLevel,
+  // type TErrorLevel,
   type IErrorDetail as IErrorDetail_,
   type IErrorLike as IErrorLike_,
-  type IErrorLikeCollection as IErrorLikeCollection_,
-  ErrorLikeProto,
+  type IErrorLikeCollection,
+  // ErrorLikeProto,
   BaseError,
-  ErrorLikeCollection,
-  captureStackTrace,
+  // ErrorLikeCollection,
+  // captureStackTrace,
   createErrorLike,
-  ensureErrorLike as ensureErrorLike_,
-  isErrorLike,
-  safeAnyToString,
-  safeGetStringOf,
-  errorDetailToList,
-  errorDetailToString,
-  nativeErrorToString,
-  errorToString,
-  errorDetailToJsonLike,
-  nativeErrorToJsonLike,
-  errorToJsonLike
+  // isErrorLike,
+  // safeAnyToString,
+  // safeGetStringOf,
+  // errorDetailToList,
+  // errorDetailToString,
+  // nativeErrorToString,
+  // errorToString,
+  // errorDetailToJsonLike,
+  // nativeErrorToJsonLike,
+  // errorToJsonLike
 } from 'js-base-error'
 import { propertyNameToString } from './utils.js'
 
-/** Коды ошибок. */
-const errorCodes = Object.freeze({
-  UnknownError: 0,
-  ConfigureError: 1,
-  ModelIsFrozenError: 2,
-  RequiredPropertyError: 3,
-  FaultyValueError: 4,
-  NotConfiguredError: 5,
-  CombinedError: 6
-} as const)
-
-/** Коды ошибок. */
-type TErrorCodes = typeof errorCodes
-/** Коды ошибок. */
-type TErrorCode = TErrorCodes[keyof TErrorCodes]
-
-const code2Name = Object.freeze(new Map(Object.entries(errorCodes).map(([name, code]) => [code, name])))
-function errorNameByCode (code: TErrorCode): string {
-  const name = code2Name.get(code)
-  return `Jnv.${name ?? ''}`
-}
-
 /**
- * Оборачивает ошибку в тип {@link IErrorLike}, если она еще не обернута и проверяет или устанавливает допустимый код
- * {@link IErrorDetail.code}.
- *
- * @param maybeError Один из вариантов {@link JnvError} или {@link IErrorDetail} или {@link IErrorLike}.
- *
- * Эта функция применяется для пользовательских валидаторов возвращающих ошибки, которые могут быть простыми объектами
- * или недопустимыми типами.
+ * Имя ошибки.
  */
-function ensureErrorLike<T extends IErrorLike> (maybeError: any): T {
-  const err = ensureErrorLike_(maybeError)
-  if (!code2Name.has(err.code)) {
-    err.code = 0
-  }
-  const name = errorNameByCode(err.code)
-  if (err.name !== name) {
-    err.name = name
-  }
-  return err as T
+type TErrorName = 'Jnv.UnknownError' | 'Jnv.ConfigureError' | 'Jnv.ModelIsFrozenError' | 'Jnv.RequiredPropertyError' | 'Jnv.FaultyValueError' | 'Jnv.NotConfiguredError' | 'Jnv.CombinedError'
+
+/**
+ * Проверяет, является ли имя ошибки допустимым.
+ *
+ * @param name Предполагаемое имя ошибки.
+ */
+function isErrorName (name: any): name is TErrorName {
+  return name === 'Jnv.ConfigureError' ||
+    name === 'Jnv.ModelIsFrozenError' ||
+    name === 'Jnv.RequiredPropertyError' ||
+    name === 'Jnv.FaultyValueError' ||
+    name === 'Jnv.NotConfiguredError' ||
+    name === 'Jnv.CombinedError' ||
+    name === 'Jnv.UnknownError'
 }
 
 /**
- * Детали ошибки с кодом и описанием.
+ * Детали ошибки.
+ *
  * Все нижеуказанные поля не являются обязательными и зависят от типа ошибки.
  */
-interface IErrorDetail extends IErrorDetail_<TErrorCode> {
-  code: TErrorCode
+interface IErrorDetail extends IErrorDetail_ {
   /**
-   * @experimental
-   *
+   * Имя ошибки.
+   */
+  name: TErrorName
+  /**
    * Строковое имя модели, если задано.
+   *
    * Имя модели не гарантируется и будет установлено, только если ошибку получил контекст валидации.
    */
   model?: string
@@ -84,17 +68,17 @@ interface IErrorDetail extends IErrorDetail_<TErrorCode> {
    */
   propertyName?: string
   /**
-   * Строковое представление пути свойства на котором произошла ошибка.
+   * Строковое представление пути к свойству на котором произошла ошибка.
    */
   propertyPath?: string
   /**
-   * Имя обязательного свойства.
+   * Имя обязательного свойства, которое не найдено в объекте.
    */
   requiredPropertyName?: string
   /**
-   * Тип или значение не прошедшего проверку свойства(значения).
+   * Значение, не прошедшее проверку, в строковом представлении.
    */
-  valueOrType?: string
+  value?: string
   /**
    * Комбинированный результат предупреждений.
    *
@@ -104,39 +88,32 @@ interface IErrorDetail extends IErrorDetail_<TErrorCode> {
    *
    * Если результат валидации ошибка, то это поле будет заполнено предупреждениями возникшими до ошибки.
    */
-  warnings?: IErrorLikeCollection
+  warnings?: IErrorLikeCollection<IErrorLike>
   /**
    * Комбинированный результат ошибок.
    */
-  errors?: IErrorLikeCollection
+  errors?: IErrorLikeCollection<IErrorLike>
 }
 
 /**
  * Базовый интерфейс деталей ошибок.
  */
-interface IErrorLike extends IErrorLike_<TErrorCode>, IErrorDetail {
-  code: TErrorCode
+interface IErrorLike extends IErrorLike_, IErrorDetail {
+  name: TErrorName
 }
 
 /**
- * Массив ошибок с методом автоматического преобразования `toString()` всех вложенных {@link IErrorLike} к строке или
- * `toJSON()` к объекту `{errors: Record<string, any>[]}`.
- */
-interface IErrorLikeCollection extends IErrorLikeCollection_<IErrorLike> { }
-
-/**
- * Базовый `abstract` класс ошибок валидатора.
+ * Базовый класс всех ошибок валидатора.
  */
 class JnvError extends BaseError<IErrorLike> { }
 
 /**
- * Предопределенные описания ошибок.
+ * Предопределенные описания ошибок. Все функции оборачивают объект в {@link IErrorLike}.
  */
 const errorDetails = Object.freeze({
   UnknownError (propertyPath: string, message?: undefined | null | string, cause?: any): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.UnknownError),
-      code: errorCodes.UnknownError,
+      name: 'Jnv.UnknownError',
       propertyPath,
       message,
       cause
@@ -144,51 +121,45 @@ const errorDetails = Object.freeze({
   },
   ConfigureError (propertyName: TPropertyName, message?: string): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.ConfigureError),
-      code: errorCodes.ConfigureError,
+      name: 'Jnv.ConfigureError',
       propertyName: propertyNameToString(propertyName),
       message
     })
   },
   ModelIsFrozenError (propertyName: TPropertyName, message?: string): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.ModelIsFrozenError),
-      code: errorCodes.ModelIsFrozenError,
+      name: 'Jnv.ModelIsFrozenError',
       propertyName: propertyNameToString(propertyName),
       message
     })
   },
   RequiredPropertyError (propertyPath: string, requiredPropertyName: TPropertyName, message?: string): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.RequiredPropertyError),
-      code: errorCodes.RequiredPropertyError,
+      name: 'Jnv.RequiredPropertyError',
       propertyPath,
       requiredPropertyName: propertyNameToString(requiredPropertyName),
       message
     })
   },
-  FaultyValueError (propertyPath: string, valueOrType: string, message?: string): IErrorLike {
+  FaultyValueError (propertyPath: string, value: string, message?: string): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.FaultyValueError),
-      code: errorCodes.FaultyValueError,
+      name: 'Jnv.FaultyValueError',
       propertyPath,
-      valueOrType,
+      value,
       message
     })
   },
-  NotConfiguredError (propertyPath: string, valueOrType: string, message?: string): IErrorLike {
+  NotConfiguredError (propertyPath: string, value: string, message?: string): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.NotConfiguredError),
-      code: errorCodes.NotConfiguredError,
+      name: 'Jnv.NotConfiguredError',
       propertyPath,
-      valueOrType,
+      value,
       message
     })
   },
-  CombinedError (fieldName: 'errors' | 'warnings', items: IErrorLikeCollection): IErrorLike {
+  CombinedError (fieldName: 'errors' | 'warnings', items: IErrorLikeCollection<IErrorLike>): IErrorLike {
     return createErrorLike({
-      name: errorNameByCode(errorCodes.CombinedError),
-      code: errorCodes.CombinedError,
+      name: 'Jnv.CombinedError',
       level: fieldName === 'warnings' ? 'warning' : 'error',
       [fieldName]: items
     })
@@ -196,11 +167,10 @@ const errorDetails = Object.freeze({
 } as const)
 
 /**
- * Вспомогательные функции приводящие сообщения к формату `{ok: false, value: null, error: IErrorLike}`.
- * Функции могут установить только одно свойство `error`.
+ * Вспомогательные функции приводящие сообщения к формату с ошибкой `{ok: false, value: null, error: JnvError}`.
  *
  * Используйте набор этих функций в пользовательском валидаторе {@link TCustomValidate}, который должен возвратить
- * унифицированный формат{@link TResult}.
+ * унифицированный формат {@link TResult}.
  *
  * @example
  * ```ts
@@ -210,14 +180,14 @@ const errorDetails = Object.freeze({
  * ```
  */
 const errorResults = Object.freeze({
-  UnknownError<T = unknown> (propertyPath: string, message?: undefined | null | string): TResult<T> {
-    return { ok: false, value: null, error: errorDetails.UnknownError(propertyPath, message) }
+  UnknownError<T = unknown> (propertyPath: string, message?: undefined | null | string, cause?: any): TResult<T> {
+    return { ok: false, value: null, error: new UnknownError(errorDetails.UnknownError(propertyPath, message, cause)) }
   },
   RequiredPropertyError<T = unknown> (propertyPath: string, requiredPropertyName: TPropertyName, message?: string): TResult<T> {
-    return { ok: false, value: null, error: errorDetails.RequiredPropertyError(propertyPath, requiredPropertyName, message) }
+    return { ok: false, value: null, error: new RequiredPropertyError(errorDetails.RequiredPropertyError(propertyPath, requiredPropertyName, message)) }
   },
-  FaultyValueError<T = unknown> (propertyPath: string, valueOrType: string, message?: string): TResult<T> {
-    return { ok: false, value: null, error: errorDetails.FaultyValueError(propertyPath, valueOrType, message) }
+  FaultyValueError<T = unknown> (propertyPath: string, value: string, message?: string): TResult<T> {
+    return { ok: false, value: null, error: new FaultyValueError(errorDetails.FaultyValueError(propertyPath, value, message)) }
   }
 } as const)
 
@@ -233,73 +203,60 @@ class ConfigureError extends JnvError { }
 
 /**
  * Ошибки конфигурации.
+ *
  * Дальнейшая конфигурация свойства запрещена.
  */
 class ModelIsFrozenError extends JnvError { }
 
 /**
  * Ошибка валидации.
+ *
  * В объекте отсутствует обязательное свойство.
  */
 class RequiredPropertyError extends JnvError { }
 
 /**
  * Ошибка валидации.
+ *
  * Тип или значение свойства недопустимы.
  */
 class FaultyValueError extends JnvError { }
 
 /**
  * Ошибка валидации.
+ *
  * Этот тип не был сконфигурирован из-за недопустимости типа значения.
  */
 class NotConfiguredError extends JnvError { }
 
 /**
- * Несколько ошибок.
+ * Контейнер для несколько ошибок.
+ *
+ * Может применяться для агрегации предупреждений.
  */
 class CombinedError extends JnvError { }
 
 /**
  * Возвращает один из конструкторов {@link JnvError}.
  */
-function errorClassByCode (code: TErrorCode): typeof JnvError {
-  switch (code) {
-    case 1: return ConfigureError
-    case 2: return ModelIsFrozenError
-    case 3: return RequiredPropertyError
-    case 4: return FaultyValueError
-    case 5: return NotConfiguredError
-    case 6: return CombinedError
+function errorClassByName (name: string): typeof JnvError {
+  switch (name) {
+    case 'Jnv.ConfigureError': return ConfigureError
+    case 'Jnv.ModelIsFrozenError': return ModelIsFrozenError
+    case 'Jnv.RequiredPropertyError': return RequiredPropertyError
+    case 'Jnv.FaultyValueError': return FaultyValueError
+    case 'Jnv.NotConfiguredError': return NotConfiguredError
+    case 'Jnv.CombinedError': return CombinedError
   }
   return UnknownError
 }
 
 export {
-  type TErrorLevel,
   type IErrorDetail,
   type IErrorLike,
-  type IErrorLikeCollection,
-  ErrorLikeProto,
-  BaseError,
-  ErrorLikeCollection,
-  captureStackTrace,
-  createErrorLike,
-  ensureErrorLike,
-  isErrorLike,
-  safeAnyToString,
-  safeGetStringOf,
-  errorDetailToList,
-  errorDetailToString,
-  nativeErrorToString,
-  errorToString,
-  errorDetailToJsonLike,
-  nativeErrorToJsonLike,
-  errorToJsonLike,
   //
-  errorCodes,
-  type TErrorCodes,
-  type TErrorCode,
+  type TErrorName,
+  isErrorName,
   errorDetails,
   errorResults,
   JnvError,
@@ -310,6 +267,5 @@ export {
   FaultyValueError,
   NotConfiguredError,
   CombinedError,
-  errorNameByCode,
-  errorClassByCode
+  errorClassByName
 }

@@ -1,36 +1,42 @@
 import type { IErrorDetail, IErrorLike, JnvError } from './errors.js'
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type { BaseModel, Model } from './models.js'
 
 type JsonPrimitive = null | boolean | number | string
 type JsonObject = { [k: string]: JsonPrimitive | JsonArray | JsonObject }
 type JsonArray = (JsonPrimitive | JsonArray | JsonObject)[]
+/** Json-совместимый тип. */
 type JsonLike = JsonPrimitive | JsonArray | JsonObject
 
 /** Специальный флаг(Symbol) пустого значения, по аналогии с `undefined`. */
-const emptyValue = Symbol('Empty_Value')
+const EMPTY_VALUE = Symbol('Empty_Value')
 /** Специальный флаг(Symbol) пустого значения, по аналогии с `undefined`. */
-type TEmptyValue = typeof emptyValue
+type TEmptyValue = typeof EMPTY_VALUE
 
 /** Имя корневой модели по умолчанию */
-const defaultRootName = '<root>'
+const DEFAULT_ROOT_NAME = '<root>'
 /** Имя корневой модели по умолчанию */
-type TDefaultRootName = typeof defaultRootName
+type TDefaultRootName = typeof DEFAULT_ROOT_NAME
 
 /** Неопределенное имя ключа */
-const unknownPropertyName = '<unknown_property_name>'
+const UNKNOWN_PROPERTY_NAME = '<unknown_property_name>'
 /** Неопределенное имя ключа */
-type TUnknownPropertyName = typeof unknownPropertyName
+type TUnknownPropertyName = typeof UNKNOWN_PROPERTY_NAME
 
 /** Неопределенное значение */
-const unknownValue = '<unknown_value>'
+const UNKNOWN_VALUE = '<unknown_value>'
 /** Неопределенное значение */
-type TUnknownValue = typeof unknownValue
+type TUnknownValue = typeof UNKNOWN_VALUE
 
 /**
  * Внутренний промежуточный результат валидации модели.
+ *
+ * Используется в {@link Model._validate()}.
+ *
  * В зависимости от опций ошибок - валидация прерывается до уровня модели.
  */
 type TRes<T> = { ok: true, value: T } | { ok: false, value: null | T }
+
 /**
  * Пустая функция.
  */
@@ -61,7 +67,7 @@ type TValueType =
   'arr' |
   // Массив с предопределенным количеством типов в строгом порядке.
   'tuple' |
-  // Одно из предопределенных значений. Значениями `enum` может быть любой допустимый тип.
+  // Одно из предопределенных значений. Значениями `union` может быть любой допустимый тип.
   // В том числе, объекты могут быть смешаны с литералами.
   'union' |
   // Пользовательский валидатор-функция.
@@ -81,19 +87,23 @@ type TPropertyName = null | number | string
 /**
  * Результат валидации:
  *
- * + `ok`      - Утверждение наличия типа в `value`.
+ * + `ok`      - Утверждение наличия типа в `value` и успешной валидации.
  * + `value`   - Результат валидации. Может присутствовать при `ok:false`, но только для экспертизы, а не использования.
- * + `warning` - Может присутствовать при `true`, если отключены выбросы исключений при незначительных ошибках, например `[].removeFaulty()`.
- * + `error`   - Всегда есть при `ok:false`, предупреждения должны быть зашиты в `error`.
+ * + `warning` - Может присутствовать при `true`(но не при `false`), если отключены выбросы исключений при
+ *               незначительных ошибках, например `[].removeFaulty()`.
+ * + `error`   - Всегда есть при `ok:false`. Если на этапе валидации возникали предупреждения и другие ошибки, ошибка
+ *               валидации может иметь поля {@link IErrorDetail.warnings} и {@link IErrorDetail.errors}.
  */
-type TResult<T> = { ok: true, value: T, warning?: IErrorLike, error?: null } | { ok: false, value: null | T, error: IErrorLike, warning?: null }
+type TResult<T> = { ok: true, value: T, warning?: JnvError, error?: null } | { ok: false, value: null | T, error: JnvError, warning?: null }
 
 /**
  * Упрощенный результат {@link TResult} функции пользователького валидатора {@link TCustomValidate}.
  *
  * Ошибка определяется по наличию непустого свойства `error`, при котором `ok` игнорируется.
  * Предупреждения могут быть как одной ошибкой, так и массивом. Ошибка всегда должна быть в единственном экземпляре.
- * Результат пользовательского валидатора будет приведен к {@link TResult}.
+ *
+ * Результат пользовательского валидатора будет приведен к {@link TResult}. Если пользователькая ошибка передана
+ * обычным объектом, последняя оборачивается подходящей ошибкой {@link JnvError}.
  */
 type TCustomResult<T> =
   {
@@ -110,12 +120,13 @@ type TCustomResult<T> =
   }
 
 /**
- * Пользовательская функция. Результат ошибок регистрируется.
+ * Пользовательская функция валидации.
  *
  * Пользовательская функция может возвратить результат валидации в формате {@link TResult} или установить одно поле
  * `error` используя упрощенный вариант {@link TCustomResult}.
  *
- * Если валидатор должен поднять исключение, сообщение передается в конструктор {@link JnvError}.
+ * Если валидатор поднимает исключение, ошибка проверяется и, в случае необходимости, оборачивается в {@link JnvError}.
+ * Независимо от типов ошибок, конечный результат валидатора всегда приводится к одному из подтипов {@link JnvError}.
  */
 type TCustomValidate<T extends JsonLike> = ((path: TPropertyName[], value: any) => TResult<T> | TCustomResult<T>)
 
@@ -124,7 +135,7 @@ type TCustomValidate<T extends JsonLike> = ((path: TPropertyName[], value: any) 
  */
 type TOptions = {
   /**
-   * Прервать конфигурирование типа и выбросить исключение. По умолчанию `false`.
+   * Прервать конфигурирование типа при любой ошибке и выбросить исключение. По умолчанию `false`.
    *
    * Результат конфигурации всегда можно проверить в соответствующем свойстве списка ошибок конфигурируемого типа
    * с помощью вызова {@link Model.getConfigureError()}.
@@ -134,20 +145,20 @@ type TOptions = {
    * Режим создания или перезаписи новых объектов:
    *
    * + `null|0|all`(по умолчанию) - При валидации создаются новые объекты и массивы. Выходной объект строго соответствует модели.
-   * + `1|'obj'`  - Создаются только объекты, массивы фильтруются. Это может несколько увеличить производительность на больших массивах(до 25%). Выходной объект строго соответствует модели.
+   * + `1|'obj'`  - Создаются только объекты, массивы фильтруются. Это может несколько увеличить производительность на больших массивах. Выходной объект строго соответствует модели.
    * + `2|'arr'`  - Создаются только массивы, объекты сохраняют свойства оригинала не предусмотренные моделью данных.
    * + `3|'none'` - Массивы и объекты перезаписываются, объекты сохраняют свойства не предусмотренные моделью данных.
    */
   createMode?: undefined | null | 0 | 'all' | 1 | 'obj' | 2 | 'arr' | 3 | 'none'
   /**
-   * Прервать валидацию и выбросить исключение. По умолчанию `false`.
+   * Прервать валидацию при любой ошибке и выбросить исключение. По умолчанию `false`.
    *
    * Результат валидации всегда доступен в {@link TResult} и поднятие исключений может быть не всегда удобным.
    *
    * Разница между `true|false`:
    *
    *  + `true`  - Любая ошибка, если она не исключена другими опциями, прерывает валидацию и поднимает исключение {@link JnvError}.
-   *  + `false` - Любая ошибка так же прерывает валидацию, но результат имеет ошибку `{ok: false, value: null, error: IErrorLike}`.
+   *  + `false` - Любая ошибка так же прерывает валидацию, но результат имеет ошибку `{ok: false, value: null, error: JnvError}`.
    *
    * Остановить исключение для отдельных типов можно опциями {@link TOptions.stopIfError} и {@link TOptions.removeFaulty}.
    */
@@ -158,7 +169,7 @@ type TOptions = {
    * Модели помеченные этим флагом записывают ошибки как предупреждения.
    *
    * Использовать эту опцию на корневом объекте или глобальной конфигурации не имеет смысла, при любой ошибке результат
-   * получит `null` или значение по умолчанию, и результат будет `{ok: true, value: null: warning: IErrorLike}`.
+   * получит `null` или значение по умолчанию, и результат будет `{ok: true, value: null: warning: JnvError}`.
    *
    * Альтернативно для любого вложенного типа нужно использовать {@link BaseModel.stopError()}.
    *
@@ -189,8 +200,11 @@ type TOptions = {
  * Те же параметры конфигурации, что и в {@link TOptions}, для конкретных моделей + `optional`.
  */
 type TModelOptions = {
+  /** Смотри {@link TOptions.stopIfError}. */
   stopIfError: boolean
+  /** Смотри {@link TOptions.removeFaulty}. */
   removeFaulty: boolean
+  /** Если `true`, то поле с этой моделью опционально для родительского объекта. */
   optional: boolean
 }
 
@@ -199,13 +213,13 @@ export {
   type JsonObject,
   type JsonArray,
   type JsonLike,
-  emptyValue,
+  EMPTY_VALUE,
   type TEmptyValue,
-  defaultRootName,
+  DEFAULT_ROOT_NAME,
   type TDefaultRootName,
-  unknownPropertyName,
+  UNKNOWN_PROPERTY_NAME,
   type TUnknownPropertyName,
-  unknownValue,
+  UNKNOWN_VALUE,
   type TUnknownValue,
   type TRes,
   type TRelease,

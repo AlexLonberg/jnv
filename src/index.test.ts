@@ -1,3 +1,4 @@
+import { ErrorLikeCollection } from 'js-base-error'
 import {
   // expectTypeOf,
   test,
@@ -13,10 +14,8 @@ import {
   type IErrorLike,
   type Context,
   type Re,
-  ErrorLikeCollection,
   Options,
   Config,
-  errorCodes,
   errorResults,
   ConfigureError,
   NotConfiguredError,
@@ -34,9 +33,10 @@ import {
   isString,
   plainCopy,
   propertyPathToString,
-  safeToJson
+  safeToJson,
+  JnvError,
+  CombinedError
 } from './index.js'
-import { errorNameByCode } from './errors.js'
 
 test('Quick start', () => {
   const v = new Factory()
@@ -78,12 +78,13 @@ test('Quick start', () => {
     .toStrictEqual({
       ok: true,
       value: { id: 1, name: 'John', email: 'a@b.c', gender: 'male', address: null as any },
-      warning: {
-        code: errorCodes.CombinedError,
-        name: 'Jnv.CombinedError',
-        level: 'warning',
-        warnings: expect.any(ErrorLikeCollection)
-      }
+      warning: expect.objectContaining({
+        detail: expect.objectContaining({
+          name: 'Jnv.CombinedError',
+          level: 'warning',
+          warnings: expect.any(ErrorLikeCollection)
+        })
+      })
     })
   // Ошибка в User остановит валидацию
   sampleUser.id = 0
@@ -91,11 +92,13 @@ test('Quick start', () => {
     .toMatchObject({
       ok: false,
       value: null,
-      error: {
-        // здесь так же будут остальные свойства ошибки
-        name: 'Jnv.FaultyValueError',
-        errors: expect.any(ErrorLikeCollection)
-      }
+      error: expect.objectContaining({
+        detail: expect.objectContaining({
+          // здесь так же будут остальные свойства ошибки
+          name: 'Jnv.FaultyValueError',
+          errors: expect.any(ErrorLikeCollection)
+        })
+      })
     })
 })
 
@@ -121,6 +124,48 @@ test('Replacing an invalid type', () => {
     { AhHaHa: '😋' },
     { enabled: 'off' }
   ])
+
+  const arrRemoved = v.arr([
+    v.obj({ enabled: v.enum('on', 'off') })
+  ]).removeFaulty() // удалить невалидное значение
+
+  expect(arrRemoved.validate([
+    { enabled: 'on' },
+    { enabled: 'oh no' },
+    { enabled: 'off' }
+  ]).value).toStrictEqual([
+    { enabled: 'on' },
+    { enabled: 'off' }
+  ])
+
+  const arrError = v.arr([
+    v.obj({ enabled: v.enum('on', 'off') })
+  ])
+
+  expect(arrError.validate([
+    {
+      get enabled () {
+        throw 123 // хитрый ход - пытаемся завалить валидатор
+      }
+    }
+  ]).error).toBeInstanceOf(JnvError)
+
+  // Список проблем
+  const arrwarnings = v.arr([v.enum(1, 4)]).removeFaulty()
+  const result = arrwarnings.validate([4, 3, 2, 1])
+  expect(result.value).toStrictEqual([4, 1])
+  expect(result.error).toBeFalsy() // Разрешенные ошибки игнорируются и при ok здесь не может error
+  expect(result.warning).toBeInstanceOf(CombinedError) // ... но может быть warning
+  expect(result.warning?.detail.warnings).toBeInstanceOf(ErrorLikeCollection)
+  // Приведем к нативному массиву, по непонятной причине, vitest не принимает ErrorLikeCollection
+  expect([...result.warning!.detail.warnings!]).toMatchObject([
+    // Каждое из значений - это IErrorLike.
+    { message: "Не удалось подобрать совместимого типа в 'UnionModel'.", value: '2' },
+    { message: "Элемент массива '[2]' проигнорирован." },
+    //
+    { message: "Не удалось подобрать совместимого типа в 'UnionModel'.", value: '3' },
+    { message: "Элемент массива '[1]' проигнорирован." },
+  ])
 })
 
 test('Freezing the model freeze()', () => {
@@ -145,9 +190,11 @@ test('Freezing the model freeze()', () => {
   // Ошибка на именованной модели вернет поле с именем
   expect(modelFrozen.validate(null)).toMatchObject({
     error: {
-      // Имя модели на которой произошла ошибка, если оно было установлено freeze(name)
-      // и ошибка возникла в контексе валидации этого значения
-      model: 'MyModelName'
+      detail: {
+        // Имя модели на которой произошла ошибка, если оно было установлено freeze(name)
+        // и ошибка возникла в контексе валидации этого значения
+        model: 'MyModelName'
+      }
     }
   })
 })
@@ -275,8 +322,7 @@ test('Extending classes', () => {
       if (this._meta.expectedValue(value)) {
         return { ok: true, value }
       }
-      const valueOrType = safeToJson(value)
-      return ctx.throwFaultyValueError(valueOrType, `Ожидалось значение категории "${this._meta.expectedType}"`)
+      return ctx.throwFaultyValueError(safeToJson(value), `Ожидалось значение категории "${this._meta.expectedType}"`)
     }
   }
 
@@ -309,14 +355,16 @@ test('Extending classes', () => {
       tennis: 'ball'
     },
     warning: {
-      name: 'Jnv.CombinedError',
-      warnings: expect.arrayContaining([
-        expect.objectContaining({
-          // наша ошибка
-          name: 'Jnv.FaultyValueError',
-          message: 'Ожидалось значение категории "golf"'
-        })
-      ])
+      detail: {
+        name: 'Jnv.CombinedError',
+        warnings: expect.arrayContaining([
+          expect.objectContaining({
+            // наша ошибка
+            name: 'Jnv.FaultyValueError',
+            message: 'Ожидалось значение категории "golf"'
+          })
+        ])
+      }
     }
   })
 
@@ -338,10 +386,11 @@ test('Type configuration errors getConfigureError()', () => {
     ok: false,
     value: null,
     error: {
-      'code': errorCodes.NotConfiguredError,
-      'name': 'Jnv.NotConfiguredError',
-      'propertyPath': expect.any(String),
-      'valueOrType': 'null',
+      detail: {
+        name: 'Jnv.NotConfiguredError',
+        propertyPath: expect.any(String),
+        value: 'null',
+      }
     }
   })
 
@@ -352,23 +401,24 @@ test('Type configuration errors getConfigureError()', () => {
     ok: false,
     value: null,
     error: {
-      'code': errorCodes.FaultyValueError,
-      'name': 'Jnv.FaultyValueError',
-      'errors': expect.any(ErrorLikeCollection)
+      detail: {
+        name: 'Jnv.FaultyValueError',
+        errors: expect.any(ErrorLikeCollection)
+      }
     }
   })
 
   // Описание всех ошибок доступно через getConfigureError()
   // Этот метод рекурсивно собирает ошибки от корня исследуемого типа и заворачивает в один IErrorLike с полем errors
-  const configureError: null | IErrorLike = unsupported.getConfigureError()
+  const configureError: null | ConfigureError = unsupported.getConfigureError()
   expect(configureError).toMatchObject({
-    code: errorCodes.ConfigureError,
-    name: 'Jnv.ConfigureError',
-    level: 'error',
-    errors: expect.any(ErrorLikeCollection)
+    name: 'Jnv.CombinedError',
+    detail: {
+      errors: expect.any(ErrorLikeCollection)
+    }
   })
 
-  const errors: IErrorLike[] = configureError!.errors!
+  const errors: IErrorLike[] = configureError!.detail.errors!
   expect(errors).toBeInstanceOf(Array)
   expect(errors).toBeInstanceOf(ErrorLikeCollection)
   // Первый вызов этого метода удаляет все полученные ошибки.
@@ -377,9 +427,8 @@ test('Type configuration errors getConfigureError()', () => {
   // Путь к ошибке состоит из <root>.foo, здесь null это наш коревой объект без имени
   // const propPath = `${propertyNameToString(null)}.foo`
   // Найдем ожидаемую ошибку с кодом ConfigureError
-  const errorValue: IErrorLike = errors!.find(({ code, propertyName }) => code === errorCodes.ConfigureError && propertyName === 'foo')!
+  const errorValue: IErrorLike = errors!.find(({ name, propertyName }) => name === 'Jnv.ConfigureError' && propertyName === 'foo')!
   expect(errorValue).toMatchObject({
-    code: errorCodes.ConfigureError,
     name: 'Jnv.ConfigureError',
     propertyPath: '<root>.foo',
     propertyName: 'foo'
@@ -429,16 +478,17 @@ test('Custom Validator', () => {
     return {
       // ok: false, // необязательно если есть IErrorDetail
       // value: null,
-      error: { code: errorCodes.FaultyValueError, name: errorNameByCode(errorCodes.FaultyValueError), message: 'my error' }
+      error: { name: 'Jnv.FaultyValueError', message: 'my error' }
     }
   }))
   expect(vUnion.validate(null)).toMatchObject({
     ok: false,
     value: null,
     error: {
-      code: errorCodes.FaultyValueError,
-      name: errorNameByCode(errorCodes.FaultyValueError),
-      errors: expect.any(ErrorLikeCollection)
+      detail: {
+        name: 'Jnv.FaultyValueError',
+        errors: expect.any(ErrorLikeCollection)
+      }
     }
   })
 
@@ -450,8 +500,7 @@ test('Custom Validator', () => {
     ok: false,
     value: null,
     error: {
-      code: errorCodes.FaultyValueError,
-      name: errorNameByCode(errorCodes.FaultyValueError),
+      name: 'Jnv.FaultyValueError',
       message: 'my custom error'
     }
   })
@@ -464,27 +513,25 @@ test('Custom Validator', () => {
   expect(mUnknownCustomError.validate(null)).toMatchObject({
     ok: false,
     value: null,
-    'error': {
-      code: errorCodes.UnknownError,
+    error: {
       name: 'Jnv.UnknownError',
-      level: 'error',
-      message: expect.any(String), // Скорее всего здесь будет 'IErrorLike was not created'
-      cause: 12345
+      detail: {
+        message: expect.any(String), // Скорее всего здесь будет 'IErrorLike was not created'
+        cause: 12345
+      }
     }
   })
 
   // Независимо от внутренних исключений, валидатор обязан вернуть предустановленную ошибку
   // Для контроля собственных ошибок можно установить пользователькое поле и передать ошибки в cause,
-  // но обязательно указать известные для jnv исключения в IErrorDetail.code
+  // но обязательно указать известные для jnv ошибки в IErrorDetail.name
   const vs = new Factory({ removeFaulty: true })
 
   const vControlledError = vs.obj({
     array: ['any string'],
     field: vs.custom((_path: TPropertyName[], _value: any) => {
       throw {
-        // Код стандартной ошибки jnv
-        code: errorCodes.FaultyValueError,
-        // любое имя поля со значением пригодным для приведения к строке toString()
+        // Пользовательское поле - любое имя со значением пригодным для приведения к строке toString() или toJSON()
         meta: 'My.Id.Error',
         cause: new Error('My internal error')
       }
@@ -494,18 +541,18 @@ test('Custom Validator', () => {
   expect(vControlledError.validate({ array: [123], field: null })).toMatchObject({
     ok: false,
     value: null,
-    'error': {
-      // Стандартизированные поля валидатора
-      code: errorCodes.FaultyValueError,
-      name: 'Jnv.FaultyValueError',
-      // Пользовательское поле
-      meta: 'My.Id.Error',
-      // Ошибка
-      cause: expect.objectContaining({ message: expect.stringContaining('My internal error') }),
-      warnings: expect.arrayContaining([expect.objectContaining({
-        code: errorCodes.FaultyValueError,
-        propertyPath: 'array.[0]'
-      })])
+    error: {
+      detail: {
+        // Стандартизированные поля валидатора
+        name: 'Jnv.UnknownError',
+        // Пользовательское поле
+        meta: 'My.Id.Error',
+        // Ошибка
+        cause: expect.objectContaining({ message: expect.stringContaining('My internal error') }),
+        warnings: expect.arrayContaining([expect.objectContaining({
+          propertyPath: 'array.[0]'
+        })])
+      }
     }
   })
 })
@@ -711,12 +758,12 @@ test('All types', () => {
   }
   const simpleCustom = v.custom(customValidate)
   expect(simpleCustom.validate('my value')).toStrictEqual({ ok: true, value: 'my value' })
-  err = { code: 0, /* propertyPath: 'это поле будет заменено, здесь нужно оставить пустую строку' */  message: 'Ошибка' }
+  err = { name: 'Jnv.UnknownError', /* propertyPath: 'это поле будет заменено, здесь нужно оставить пустую строку' */  message: 'Ошибка' }
   const result = simpleCustom.validate('my value')
   expect(result.ok).toBe(false)
   expect(result.value).toBe(null)
   expect(result?.warning ?? null).toBe(null)
-  expect((result as any).error).toMatchObject({ code: errorCodes.UnknownError, name: 'Jnv.UnknownError', message: 'Ошибка' })
+  expect((result as any).error).toMatchObject({ name: 'Jnv.UnknownError', message: 'Ошибка' })
 
   const pipeModel = v.str().pipe(v.custom((_path, value) => ({ ok: true, value: JSON.parse(value) })))
   expect(pipeModel.validate('{"foo":1}').value).toStrictEqual({ foo: 1 })

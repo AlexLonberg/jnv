@@ -18,6 +18,9 @@ class Re {
     return (this._re.source === source && this._re.flags === flags)
   }
 
+  /**
+   * Возвращает ссылку на `RegExp` сбрасывая `lastIndex`.
+   */
   get re (): RegExp {
     this._re.lastIndex = 0
     return this._re
@@ -34,6 +37,11 @@ class Re {
 class RegExpCache {
   readonly _cache: Re[] = []
 
+  /**
+   * Возвращает обертку для `RegExp` или ссылку на точную копию.
+   *
+   * @param re Регулярное выражение.
+   */
   getOf (re: RegExp): Re {
     const source = re.source
     const flags = re.flags

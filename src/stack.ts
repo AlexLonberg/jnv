@@ -6,6 +6,11 @@ type TStackNode<T> = {
   prev: null | TStackNode<T>
 }
 
+/**
+ * Безопасный стек.
+ *
+ * Под безопасным следует понимать, что удаление объектов стека в строгом порядке добавления необязательно.
+ */
 class SafeStack<T> {
   protected prev: null | TStackNode<T> = null
 
@@ -38,7 +43,9 @@ class SafeStack<T> {
   }
 
   /**
-   * Самое последнее значение зарегистрированное в {@link enter()}.
+   * Самое последнее значение зарегистрированное в {@link enter()} или `null`.
+   *
+   * Проверить наличие значений в стеке можно соответствующими функциями {@link isEmpty()} или {@link isAny()}.
    */
   top (): null | T {
     return this.prev ? this.prev.value : null
@@ -64,6 +71,11 @@ class SafeStack<T> {
   }
 }
 
+/**
+ * Трекер для отслеживания пути объектов.
+ *
+ * Применяется для получения пути к свойству и регистрации ошибок.
+ */
 class PathTracker extends SafeStack<TPropertyName> {
   override toString (): string {
     return [...this.values()].reverse().map((v) => propertyNameToString(v)).join('.')

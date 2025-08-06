@@ -15,9 +15,9 @@
 
     npm i jnv
 
-`jnv` использует `"peerDependencies": { "js-base-error": "0.3.0" }`.
+`jnv` использует `"peerDependencies": { "js-base-error": "0.4.0" }`.
 Использование `peerDependency` гарантирует, что все части вашего приложения (включая `jnv` и другие библиотеки) будут использовать один и тот же экземпляр базового класса ошибок `BaseError`.
-Если ваш проект не использует `js-base-error`, библиотека установится автоматически, иначе проверьте совместимость версии `js-base-error@0.3.0` в вашем `package.json`.
+Если ваш проект не использует `js-base-error`, библиотека установится автоматически, иначе проверьте совместимость версии `js-base-error@0.4.0` в вашем `package.json`.
 
 ## 🔥 Пример использования
 
@@ -91,8 +91,8 @@ expect(userModel.validate(sampleUser)).toStrictEqual({ ok: true, value: sampleUs
 {
   ok: boolean,
   value: null | T,
-  error?: IErrorLike,  // только если ok: false
-  warning?: IErrorLike // только если нет error
+  error?: JnvError,  // только если ok: false
+  warning?: JnvError // только если нет error и ok:true
 }
 ```
 
@@ -153,7 +153,15 @@ expect(arrModel.validate([
 Класс валидатора обязан реализовать единственный абстрактный метод `_validate()`
 
 ```ts
-import { BaseModel, Factory } from 'jnv'
+import { 
+  type Context,
+  type Metadata,
+  type Re,
+  type Res,
+  BaseModel, 
+  Factory, 
+  isString 
+} from 'jnv'
 
 class PhoneNumberModel extends BaseModel<string> {
   protected override _validate (ctx: Context, value: any): TRes<string> {

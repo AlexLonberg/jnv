@@ -1,10 +1,10 @@
 import type { TOptions, TModelOptions } from './types.js'
-import { hasOwn, isPlainObject, plainCopy, mergeBoolOrIntProperties } from './utils.js'
+import { hasOwn, isPlainObject, plainCopy, mergeBoolOrUIntProperties } from './utils.js'
 
 type TConfig = { [K in keyof TOptions]-?: Exclude<TOptions[K], undefined | null | string> }
 
 /**
- * Преобразует строковые значения параметров к числовым флагам.
+ * Преобразует строковые значения опциональных параметров к числовым флагам.
  */
 function transformStringOptions (options: TOptions): { [K in keyof TOptions]-?: Exclude<TOptions[K], string> } {
   if (options && hasOwn(options, 'createMode')) {
@@ -37,7 +37,9 @@ class Config {
   protected readonly _options: TConfig
 
   constructor(options?: undefined | null | TOptions) {
-    this._options = isPlainObject(options) ? mergeBoolOrIntProperties(plainCopy(defaultConfig), transformStringOptions(plainCopy(options))) : plainCopy(defaultConfig)
+    this._options = isPlainObject(options)
+      ? mergeBoolOrUIntProperties(plainCopy(defaultConfig), transformStringOptions(plainCopy(options)))
+      : plainCopy(defaultConfig)
   }
 
   get modeCopyObj (): boolean {

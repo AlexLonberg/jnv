@@ -1,11 +1,10 @@
 import {
-  defaultRootName,
-  type TDefaultRootName,
-  unknownPropertyName,
-  type TUnknownPropertyName,
-  unknownValue,
-  type TUnknownValue,
-  type TPropertyName
+  DEFAULT_ROOT_NAME,
+  UNKNOWN_PROPERTY_NAME,
+  UNKNOWN_VALUE,
+  type TPropertyName,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  type TDefaultRootName, type TUnknownPropertyName, type TUnknownValue
 } from './types.js'
 
 const _hasOwn = ('hasOwn' in Object && typeof Object.hasOwn === 'function')
@@ -27,21 +26,21 @@ function isBoolean (value: any): value is boolean {
 }
 
 /**
- * Является ли аргумент `value` числом исключая `NaN` и `Infinity`.
+ * Является ли аргумент `value` числом исключая `NaN` и `Infinity`. Псевдоним `Number.isFinite()`.
  */
 function isNumber (value: any): value is number {
   return Number.isFinite(value)
 }
 
 /**
- * Является ли аргумент `value` целым числом.
+ * Является ли аргумент `value` целым числом. Псевдоним `Number.isSafeInteger()`.
  */
 function isInt (value: any): value is number {
   return Number.isSafeInteger(value)
 }
 
 /**
- * Является ли аргумент `value` целым неотрицательным числом.
+ * Является ли аргумент `value` целым неотрицательным числом. Псевдоним `Number.isSafeInteger()` с проверкой `>= 0`.
  */
 function isIntNonnegative (value: any): value is number {
   return Number.isSafeInteger(value) && value >= 0
@@ -83,7 +82,7 @@ function isPlainObject<T> (value: T): value is (object & T) {
 }
 
 /**
- * Является ли значение `value` массивом.
+ * Является ли значение `value` массивом. Псевдоним `Array.isArray()`.
  */
 function isArray<T> (value: T): value is (any[] & T) {
   return Array.isArray(value)
@@ -148,12 +147,12 @@ function plainCopy<T> (value: T): T {
 }
 
 /**
- * Сливает только `boolean` и `number` свойства, которые есть у обоих объектов.
+ * Сливает только `boolean` и `number(UInt) >= 0` свойства, которые есть у обоих объектов.
  *
  * @param target Целевой объект на который копируются свойства.
  * @param source Источник.
  */
-function mergeBoolOrIntProperties<T extends Record<string, boolean | number>> (target: T, source: { [_ in keyof T]?: undefined | null | boolean | number }): T {
+function mergeBoolOrUIntProperties<T extends Record<string, boolean | number>> (target: T, source: { [_ in keyof T]?: undefined | null | boolean | number }): T {
   for (const key of Object.keys(target)) {
     if (hasOwn(source, key) && (isBoolean(source[key]) || isIntNonnegative(source[key]))) {
       (target as any)[key] = source[key]
@@ -163,77 +162,40 @@ function mergeBoolOrIntProperties<T extends Record<string, boolean | number>> (t
 }
 
 /**
- * Поверхностное равенство ключей и значений двух объектов.
- */
-function shallowEquals (obj1: object, obj2: object): boolean {
-  if (obj1 === obj2) {
-    return true
-  }
-  const keys1 = Object.keys(obj1)
-  const keys2 = Object.keys(obj2)
-  if (keys1.length !== keys2.length) {
-    return false
-  }
-  for (const key of keys1) {
-    if (!keys2.includes(key) || (obj1 as any)[key] !== (obj2 as any)[key]) {
-      return false
-    }
-  }
-  return true
-}
-
-/**
- * Наличие объекта в массиве используя поверхностное равенство {@link shallowEquals()}.
- *
- * @param array Массив.
- * @param value Искомый объект.
- */
-function objInArray<T extends object> (array: T[], value: T): boolean {
-  for (const item of array) {
-    if (shallowEquals(value, item)) {
-      return true
-    }
-  }
-  return false
-}
-
-/**
  * Возвращает строковое представление ключа `string|number|null` или специальное значение {@link TUnknownPropertyName}.
  * Для ключа `null` возвращается корневой неименованный идентификатор {@link TDefaultRootName}.
  */
-function propertyNameToString (value: any): string {
-  if (value === null) {
-    return defaultRootName
+function propertyNameToString (key: any): string {
+  if (key === null) {
+    return DEFAULT_ROOT_NAME
   }
-  if (isString(value)) {
-    return value
+  if (isString(key)) {
+    return key
   }
-  if (isIntNonnegative(value)) {
+  if (isIntNonnegative(key)) {
     try {
-      return `[${value.toString()}]`
+      return `[${key.toString()}]`
     } catch (_) { /* */ }
   }
-  return unknownPropertyName
+  return UNKNOWN_PROPERTY_NAME
 }
 
 /**
- * Возвращает строковое представление пути {@link TPropertyName}`[]`.
+ * Возвращает строковое представление пути {@link TPropertyName}`[]` в виде составной строки с точками `foo.bar`.
  */
 function propertyPathToString (propertyPath: TPropertyName[]): string {
-  return isArray(propertyPath) ? propertyPath.map((name) => propertyNameToString(name)).join('.') : unknownPropertyName
+  return isArray(propertyPath) ? propertyPath.map((name) => propertyNameToString(name)).join('.') : UNKNOWN_PROPERTY_NAME
 }
 
 /**
- * Приводит `value` к Json или возвращает специальное значение {@link TUnknownValue}.
+ * Пытается привести `value` к Json или возвращает специальное значение {@link TUnknownValue}.
+ * Эта функция используется для регистрации ошибок.
  */
 function safeToJson (value: any): string {
   try {
-    if (isString(value)) {
-      return value
-    }
     return JSON.stringify(value)
   } catch (_) {
-    return unknownValue
+    return UNKNOWN_VALUE
   }
 }
 
@@ -253,9 +215,7 @@ export {
   hasOwn,
   copyRegExp,
   plainCopy,
-  mergeBoolOrIntProperties,
-  shallowEquals,
-  objInArray,
+  mergeBoolOrUIntProperties,
   propertyNameToString,
   propertyPathToString,
   safeToJson

@@ -42,10 +42,10 @@
   },
   "include": [
     "src/**/*.ts",
-    "scripts/**/*.ts",
-    "scripts/**/*.js"
+    "scripts/**/*.ts"
   ],
   "files": [
+    // Этот конфиг работает, но вызывает проблемы у TS - проще его отключить или не включать checkJs.
     "eslint.config.js",
     "vitest.config.ts"
   ],

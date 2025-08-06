@@ -1,19 +1,25 @@
 import {
   type JsonPrimitive,
   type JsonLike,
-  emptyValue,
+  EMPTY_VALUE,
   type TEmptyValue,
   type TValueType,
   type TCustomValidate,
 } from './types.js'
-import type { IErrorLike } from './errors.js'
+import type {
+  IErrorLike,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  JnvError
+} from './errors.js'
 import type { Re } from './re.js'
 import type { Model, UnionModel } from './models.js'
-import { isArray, objInArray } from './utils.js'
+import { isArray } from './utils.js'
 
 /**
  * Метаданные типа. Этот класс не проверяет параметры и ожидает валидные значения для всех вызовов или изменений свойств
  * владельцем инстанса.
+ *
+ * @template T Параметр типа определяет тип свойства `expectedType`, не путать с типом значения.
  */
 class Metadata<T> {
   protected readonly _type: TValueType = 'none'
@@ -21,15 +27,15 @@ class Metadata<T> {
    * Для разных моделей это свойство имеет схожее значение. Тип этого свойства строго соответствует:
    *
    * + 'none|raw|bool' {@link TEmptyValue} - Не задано
-   * + 'num' - `true/false`, `expectedType:true` означает int.
-   * + 'str' - Для строк с проверкой регулярными выражениями это {@link Re}[], иначе не задано.
-   * + 'literal' - `null|boolean|number|string`. Всегда присутствует значение.
-   * + 'enum' - `Set<(null|boolean|number|string)>` - Для списка `enum`. Всегда имеет хотя-бы одно значение.
-   * + 'obj|tuple|union|pipe' - {@link Model}[] - Список свойств объектов или массивов. Для 'union' это варианты возможных значений.
-   * + `arr` - {@link UnionModel} - Модель для подбора значений.
+   * + 'num' - `true/false`, `expectedType:true` означает `int`.
+   * + 'str' - Для строк с проверкой регулярными выражениями это {@link Re}`[]`, иначе не задано.
+   * + 'literal' - `null|boolean|number|string`. Всегда присутствует примитивное ожидаемое значение.
+   * + 'enum' - `Set<(null|boolean|number|string)>` - Для списка `enum`. Всегда имеет хотя-бы одно примитивное ожидаемое значение.
+   * + 'obj|tuple|union|pipe' - {@link Model}`[]` - Список свойств объектов или массивов. Для 'union' это варианты возможных значений.
+   * + `arr` - {@link UnionModel} - Модель для подбора значений элементов массива.
    * + 'custom' - Пользовательская функция {@link TCustomValidate}.
    */
-  expectedType: /* TEmptyValue | */ T = emptyValue as T
+  expectedType: /* TEmptyValue | */ T = EMPTY_VALUE as T
 
   // Эти свойства применяются к числам, строкам и массивам.
   min: null | number = null
@@ -51,25 +57,27 @@ class Metadata<T> {
    * Присутствует ли значение отличное от {@link TEmptyValue}.
    */
   hasExpectedType (): boolean {
-    return this.expectedType !== emptyValue
+    return this.expectedType !== EMPTY_VALUE
   }
 
   /**
    * Добавить ошибку вызванную на этапе конфигурации.
+   *
+   * **Warning:** Ошибки должны быть строго обернуты в {@link IErrorLike}, ошибка {@link JnvError} не допускается.
    */
   addConfigError (...details: IErrorLike[]): void {
     if (!this._errorDetails) {
       this._errorDetails = []
     }
     for (const detail of details) {
-      if (!objInArray(this._errorDetails, detail)) {
+      if (!this._errorDetails.includes(detail)) {
         this._errorDetails.push(detail)
       }
     }
   }
 
   /**
-   * Возвращает все ошибки и очищает свойство `errorDetails`.
+   * Возвращает все ошибки и очищает свойство `_errorDetails`.
    */
   getErrors (): null | IErrorLike[] {
     const errors = this._errorDetails
@@ -87,7 +95,7 @@ class Metadata<T> {
     if (this._type === 'obj' || this._type === 'tuple' || this._type === 'union' || this._type === 'pipe') {
       return [...(this.expectedType as any[])] as Model<any>[]
     }
-    if (this.expectedType !== emptyValue && this._type === 'arr') {
+    if (this.expectedType !== EMPTY_VALUE && this._type === 'arr') {
       return [this.expectedType as UnionModel<any>]
     }
     return null
@@ -139,7 +147,7 @@ class Metadata<T> {
     return meta
   }
 
-  static str (): Metadata<TEmptyValue | Re[]> {
+  static str (): Metadata<TEmptyValue | (readonly Re[])> {
     return this.create<TEmptyValue>('str')
   }
 
@@ -147,8 +155,8 @@ class Metadata<T> {
    * Псевдоним {@link Metadata.str()} с одновременной установкой списка {@link Re}[].
    * @param re !!! Непустой массив.
    */
-  static re (...re: Re[]): Metadata<Re[]> {
-    const meta = this.create<Re[]>('str')
+  static re (...re: readonly Re[]): Metadata<readonly Re[]> {
+    const meta = this.create<readonly Re[]>('str')
     meta.expectedType = [...re]
     return meta
   }
@@ -162,8 +170,8 @@ class Metadata<T> {
   /**
    * @param set !!! Непустой Set.
    */
-  static enum<T extends JsonPrimitive> (set: Set<T>): Metadata<Set<T>> {
-    const meta = this.create<Set<T>>('enum')
+  static enum<T extends JsonPrimitive> (set: ReadonlySet<T>): Metadata<ReadonlySet<T>> {
+    const meta = this.create<ReadonlySet<T>>('enum')
     meta.expectedType = set
     return meta
   }
@@ -192,8 +200,8 @@ class Metadata<T> {
   /**
    * @param values !!! Непустой массив.
    */
-  static union<T extends JsonLike> (values: Model<T>[]): Metadata<Model<T>[]> {
-    const meta = this.create<Model<T>[]>('union')
+  static union<T extends JsonLike> (values: readonly Model<T>[]): Metadata<readonly Model<T>[]> {
+    const meta = this.create<readonly Model<T>[]>('union')
     meta.expectedType = values
     return meta
   }
@@ -204,8 +212,8 @@ class Metadata<T> {
     return meta
   }
 
-  static pipe<T extends JsonLike> (values: Model<T>[]): Metadata<Model<T>[]> {
-    const meta = this.create<Model<T>[]>('pipe')
+  static pipe<T extends JsonLike> (values: readonly Model<T>[]): Metadata<readonly Model<T>[]> {
+    const meta = this.create<readonly Model<T>[]>('pipe')
     meta.expectedType = values
     return meta
   }
